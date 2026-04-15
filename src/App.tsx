@@ -111,6 +111,10 @@ export default function App() {
   const [isAccelerating, setIsAccelerating] = useState(false);
   const [isAutoDrive, setIsAutoDrive] = useState(true);
   const [isBraking, setIsBraking] = useState(false);
+  const [playerLane, setPlayerLane] = useState(0); // -1, 0, 1
+  const [targetLane, setTargetLane] = useState(0);
+  const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string }[]>([]);
+  const [distance, setDistance] = useState(0);
   const [showInstructions, setShowInstructions] = useState(true);
   const [connectedGears, setConnectedGears] = useState<string[]>([]);
   const [selectedGearId, setSelectedGearId] = useState<string | null>(null);
@@ -176,12 +180,17 @@ export default function App() {
   // Keyboard Controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === ' ') setIsAccelerating(true);
-      if (e.key === 'ArrowLeft' || e.key === 'a') setIsBraking(true);
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') setIsAccelerating(true);
+      if (e.key === 'ArrowDown' || e.key === 's') setIsBraking(true);
+      
+      if (gameState === 'racing') {
+        if (e.key === 'ArrowLeft' || e.key === 'a') setTargetLane(prev => Math.max(-1, prev - 1));
+        if (e.key === 'ArrowRight' || e.key === 'd') setTargetLane(prev => Math.min(1, prev + 1));
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === ' ') setIsAccelerating(false);
-      if (e.key === 'ArrowLeft' || e.key === 'a') setIsBraking(false);
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') setIsAccelerating(false);
+      if (e.key === 'ArrowDown' || e.key === 's') setIsBraking(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -303,372 +312,187 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // Physics Engine Setup
+  // Pseudo-3D Racing Logic
   useEffect(() => {
     if (gameState !== 'racing') return;
 
-    const engine = Matter.Engine.create();
-    engineRef.current = engine;
-    const render = Matter.Render.create({
-      element: canvasRef.current!,
-      engine: engine,
-      options: {
-        width: canvasSize.width,
-        height: canvasSize.height,
-        wireframes: false,
-        background: 'transparent',
-      },
-    });
-
-    // Terrain Generation (Flat Road with Obstacles)
-    const terrain: Matter.Body[] = [];
-    const roadWidth = 10000;
-    
-    // Base Road
-    const ground = Matter.Bodies.rectangle(roadWidth / 2, 400, roadWidth, 100, { 
-      isStatic: true, 
-      friction: 0.8,
-      render: { 
-        fillStyle: '#111',
-        strokeStyle: '#e11d48',
-        lineWidth: 2
-      }
-    });
-    terrain.push(ground);
-
-    // Obstacles (Crates, Bumps, Ramps)
-    for (let x = 800; x < roadWidth; x += 600 + Math.random() * 400) {
-      const type = Math.random();
-      if (type > 0.7) {
-        // Ramp
-        const ramp = Matter.Bodies.fromVertices(x, 360, [
-          [{ x: -60, y: 40 }, { x: 60, y: 40 }, { x: 60, y: -20 }]
-        ], { isStatic: true, friction: 0.5, render: { fillStyle: '#222', strokeStyle: '#e11d48', lineWidth: 1 } });
-        terrain.push(ramp);
-      } else if (type > 0.4) {
-        // Speed Bump
-        const bump = Matter.Bodies.circle(x, 360, 20, { isStatic: true, render: { fillStyle: '#e11d48' } });
-        terrain.push(bump);
-      } else {
-        // Crate
-        const crate = Matter.Bodies.rectangle(x, 330, 40, 40, { 
-          friction: 0.5, 
-          density: 0.001,
-          render: { fillStyle: '#78350f', strokeStyle: '#92400e', lineWidth: 2 } 
-        });
-        terrain.push(crate);
-      }
-    }
-
-    // Vehicle
-    const chassis = Matter.Bodies.fromVertices(150, 250, [
-      [
-        { x: -40, y: 10 }, { x: -35, y: -5 }, { x: -10, y: -15 }, 
-        { x: 20, y: -15 }, { x: 40, y: 0 }, { x: 40, y: 10 }
-      ]
-    ], { 
-      collisionFilter: { group: -1 },
-      mass: 5,
-      render: { 
-        fillStyle: '#e11d48',
-        strokeStyle: '#fb7185',
-        lineWidth: 3
-      }
-    });
-
-    // Add a cockpit/spoiler as sub-parts or just stylized render
-    const wheelA = Matter.Bodies.circle(120, 280, 18, { 
-      friction: 1.0,
-      density: 0.01,
-      render: { 
-        fillStyle: '#111',
-        strokeStyle: '#e11d48',
-        lineWidth: 4
-      }
-    });
-    const wheelB = Matter.Bodies.circle(180, 280, 18, { 
-      friction: 1.0,
-      density: 0.01,
-      render: { 
-        fillStyle: '#111',
-        strokeStyle: '#e11d48',
-        lineWidth: 4
-      }
-    });
-
-    const axelA = Matter.Constraint.create({
-      bodyA: chassis,
-      pointA: { x: -30, y: 15 },
-      bodyB: wheelA,
-      stiffness: 0.1, // Softer suspension
-      damping: 0.1,
-      length: 10,
-      render: { visible: false }
-    });
-    const axelB = Matter.Constraint.create({
-      bodyA: chassis,
-      pointA: { x: 30, y: 15 },
-      bodyB: wheelB,
-      stiffness: 0.1, // Softer suspension
-      damping: 0.1,
-      length: 10,
-      render: { visible: false }
-    });
-
-    playerBodyRef.current = chassis;
-    wheelARef.current = wheelA;
-    wheelBRef.current = wheelB;
-
-    Matter.Composite.add(engine.world, [...terrain, chassis, wheelA, wheelB, axelA, axelB]);
-    Matter.Render.run(render);
-
-    // Custom drawing for Neon Glow and Particles
-    Matter.Events.on(render, 'afterRender', () => {
-      const ctx = render.context;
-      const bodies = Matter.Composite.allBodies(engine.world);
-
-      ctx.save();
-      
-      // Draw Particles
-      particlesRef.current.forEach((p, i) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life -= 0.02;
-        if (p.life <= 0) {
-          particlesRef.current.splice(i, 1);
-          return;
-        }
-        ctx.beginPath();
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.arc(p.x, p.y, 2 + (1 - p.life) * 4, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.globalAlpha = 1;
-
-      bodies.forEach(body => {
-        if (body.isStatic) {
-          // Terrain glow
-          ctx.beginPath();
-          ctx.strokeStyle = 'rgba(225, 29, 72, 0.3)';
-          ctx.lineWidth = 10;
-          ctx.shadowBlur = 15;
-          ctx.shadowColor = '#e11d48';
-          const vertices = body.vertices;
-          ctx.moveTo(vertices[0].x, vertices[0].y);
-          ctx.lineTo(vertices[1].x, vertices[1].y);
-          ctx.stroke();
-        } else if (body === chassis || body === wheelA || body === wheelB) {
-          // Car/Wheel glow
-          ctx.beginPath();
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = body === chassis ? '#e11d48' : '#fb7185';
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-          const vertices = body.vertices;
-          ctx.moveTo(vertices[0].x, vertices[0].y);
-          for (let i = 1; i < vertices.length; i++) {
-            ctx.lineTo(vertices[i].x, vertices[i].y);
-          }
-          ctx.closePath();
-          ctx.stroke();
-        }
-      });
-      ctx.restore();
-    });
-
-    const runner = Matter.Runner.create();
-    Matter.Runner.run(runner, engine);
-
-    const otherBodies: Record<string, Matter.Body> = {};
-    let frameCount = 0;
+    let animFrame: number;
+    let lastTime = performance.now();
+    let localDistance = 0;
+    let localObstacles: { id: string, lane: number, z: number, type: string }[] = [];
     let localEngineTemp = 20;
-    let localBrakeTemp = 20;
-    let localBoostTime = 0;
-    const obstacles = terrain.filter(b => !b.isStatic || b.label === 'obstacle'); // Labeling helps but here we check all non-ground
-    const groundBody = ground;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvasRef.current?.appendChild(canvas);
 
-    // Optimized Game Loop using Matter.js events
-    Matter.Events.on(engine, 'beforeUpdate', () => {
-      if (!playerBodyRef.current || !socket) return;
-      frameCount++;
+    const update = (time: number) => {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
 
-      if (localBoostTime > 0) {
-        localBoostTime -= 1/60;
-        if (localBoostTime <= 0) {
-          setBoostTime(0);
-          setLastBoostType(null);
-        }
-      }
-
-      // Proximity Detection for Boost
-      const pos = playerBodyRef.current.position;
-      terrain.forEach(obj => {
-        if (obj === groundBody) return;
-        
-        const dist = Matter.Vector.magnitude(Matter.Vector.sub(pos, obj.position));
-        // Meter scale in our game: ~100px = 10m (roughly based on car size 80px)
-        // 10m = 100px, 5m = 50px, 1m = 10px
-        if (dist < 150 && obj.position.x > pos.x) { // Only obstacles ahead
-          const relativeDist = dist - 40; // Subtract car half-width
-          let boostDuration = 0;
-          let type = "";
-
-          if (relativeDist < 10) { boostDuration = 6; type = "EXTREME"; }
-          else if (relativeDist < 50) { boostDuration = 4; type = "GREAT"; }
-          else if (relativeDist < 100) { boostDuration = 2; type = "NEAR MISS"; }
-
-          if (boostDuration > localBoostTime) {
-            localBoostTime = boostDuration;
-            setBoostTime(boostDuration);
-            setLastBoostType(type);
-          }
-        }
-      });
-
-      // Update other players' ghosts
-      (Object.values(otherPlayers) as PlayerState[]).forEach(p => {
-        if (!otherBodies[p.id]) {
-          otherBodies[p.id] = Matter.Bodies.rectangle(p.x, p.y, 80, 20, {
-            isStatic: true,
-            collisionFilter: { group: -1, mask: 0 },
-            render: { fillStyle: 'rgba(59, 130, 246, 0.5)' }
-          });
-          Matter.Composite.add(engine.world, otherBodies[p.id]);
-        } else {
-          Matter.Body.setPosition(otherBodies[p.id], { x: p.x, y: p.y });
-          Matter.Body.setAngle(otherBodies[p.id], p.angle);
-        }
-      });
-
-      const angle = playerBodyRef.current.angle;
-      const { isAccelerating: acc, isAutoDrive: auto, isBraking: brake, connectedGears: conn } = controlsRef.current;
-      
+      const { isAccelerating: acc, isAutoDrive: auto, isBraking: brake } = controlsRef.current;
       const activeAcceleration = acc || auto;
-      const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (conn.length * 0.02));
-      const boostMultiplier = localBoostTime > 0 ? 2.5 : 1;
-      const baseTorque = hasUpgrade('nitro_system') ? 31.25 : 25;
-      const torque = (isConnected && activeAcceleration) ? (baseTorque * gearRatio * efficiency * boostMultiplier) : 0;
-      const speed = Matter.Vector.magnitude(playerBodyRef.current.velocity);
       
-      // Air Control
-      const isGrounded = Matter.Query.collides(wheelA, terrain).length > 0 || Matter.Query.collides(wheelB, terrain).length > 0;
-      if (!isGrounded && gameState === 'racing') {
-        if (acc || auto) {
-          Matter.Body.setAngularVelocity(playerBodyRef.current, 0.02);
-        } else if (brake) {
-          Matter.Body.setAngularVelocity(playerBodyRef.current, -0.02);
-        }
-      }
-
-      // Particle Logic (Ref based, no React state)
-      if (gameState === 'racing') {
-        if (localBoostTime > 0) {
-          particlesRef.current.push({
-            x: pos.x - 40,
-            y: pos.y + (Math.random() - 0.5) * 20,
-            vx: -5 - Math.random() * 5,
-            vy: (Math.random() - 0.5) * 2,
-            life: 0.8,
-            color: '#f43f5e'
-          });
-        }
-        if (localEngineTemp > 60 && Math.random() > 0.8) {
-          particlesRef.current.push({
-            x: pos.x - 40,
-            y: pos.y - 10,
-            vx: -1 - Math.random() * 2,
-            vy: -2 - Math.random() * 2,
-            life: 1.0,
-            color: localEngineTemp > 80 ? '#ef4444' : '#9ca3af'
-          });
-        }
-        if (speed > 2 && Math.random() > 0.9) {
-          particlesRef.current.push({
-            x: wheelB.position.x,
-            y: wheelB.position.y + 15,
-            vx: -2 - Math.random() * 2,
-            vy: -1 - Math.random() * 1,
-            life: 0.8,
-            color: '#78350f'
-          });
-        }
-      }
-
-      // Thermal Logic (Local variables for performance)
-      const stallFactor = (activeAcceleration && isConnected && speed < 0.5) ? 1.2 : 1;
-      const torqueLoad = Math.abs(torque) * 0.0005; 
-      const baseLoad = isConnected ? 0.02 : 0.005;
-      const coolingFactor = hasUpgrade('super_cooler') ? 0.6 : 1;
-      const load = activeAcceleration ? (torqueLoad + baseLoad) * stallFactor * coolingFactor : 0;
-      const airCooling = speed * 0.005;
-      const cooling = (activeAcceleration ? 0.01 : 0.05) + airCooling;
+      // Speed calculation based on gear ratio
+      const baseSpeed = 500;
+      const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
+      const currentSpeed = activeAcceleration ? (baseSpeed * gearRatio * efficiency) : (brake ? -200 : -50);
       
-      localEngineTemp = Math.max(20, localEngineTemp + load - cooling);
-      if (localEngineTemp > 90) setGameState('exploded');
+      const speedMultiplier = Math.max(0, currentSpeed);
+      localDistance += speedMultiplier * dt;
+      setDistance(localDistance);
+
+      // Lane interpolation
+      setPlayerLane(prev => {
+        const diff = targetLane - prev;
+        if (Math.abs(diff) < 0.1) return targetLane;
+        return prev + diff * 10 * dt;
+      });
+
+      // Heat management
+      if (activeAcceleration) {
+        const heatGen = (gearRatio * 0.5) * (hasUpgrade('super_cooler') ? 0.6 : 1);
+        localEngineTemp = Math.min(100, localEngineTemp + heatGen * dt);
+      } else {
+        localEngineTemp = Math.max(20, localEngineTemp - 5 * dt);
+      }
+      setEngineTemp(localEngineTemp);
 
       if (brake) {
-        Matter.Body.setAngularVelocity(wheelA, wheelA.angularVelocity * 0.8);
-        Matter.Body.setAngularVelocity(wheelB, wheelB.angularVelocity * 0.8);
-        localBrakeTemp = Math.min(100, localBrakeTemp + 1.5);
-      } else if (speed > 5 && angle > 0.1) {
-        const gearStress = gearRatio < 1 ? (1 / gearRatio) : 1;
-        localBrakeTemp = Math.min(100, localBrakeTemp + 0.1 * gearStress);
+        setBrakeTemp(prev => Math.min(100, prev + 20 * dt));
       } else {
-        localBrakeTemp = Math.max(20, localBrakeTemp - 0.2);
+        setBrakeTemp(prev => Math.max(20, prev - 10 * dt));
       }
 
-      // Throttle React state updates (every 10 frames)
-      if (frameCount % 10 === 0) {
-        setEngineTemp(localEngineTemp);
-        setBrakeTemp(localBrakeTemp);
+      if (localEngineTemp >= 90) {
+        setGameState('exploded');
+        return;
       }
 
-      // Apply force to wheels
-      if (isConnected && gameState === 'racing' && activeAcceleration) {
-        Matter.Body.setAngularVelocity(wheelA, torque * 0.02);
-        Matter.Body.setAngularVelocity(wheelB, torque * 0.02);
-      }
-
-      // Camera Follow (Runner Style)
-      if (render.canvas) {
-        Matter.Render.lookAt(render, {
-          min: { x: pos.x - 200, y: pos.y - 400 },
-          max: { x: pos.x + 800, y: pos.y + 100 }
+      // Obstacle generation
+      if (Math.random() < 0.02) {
+        localObstacles.push({
+          id: Math.random().toString(36).substr(2, 9),
+          lane: Math.floor(Math.random() * 3) - 1,
+          z: localDistance + 2000,
+          type: Math.random() > 0.5 ? 'crate' : 'bump'
         });
       }
 
-      // Throttle Socket Sync (every 3 frames ~ 20fps)
-      if (frameCount % 3 === 0) {
+      // Filter and collision
+      localObstacles = localObstacles.filter(obs => {
+        const relativeZ = obs.z - localDistance;
+        
+        // Collision detection
+        if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLane) < 0.5) {
+          localEngineTemp += 10;
+          return false;
+        }
+        
+        return relativeZ > -100;
+      });
+      setObstacles([...localObstacles]);
+
+      // Rendering
+      const w = canvasSize.width;
+      const h = canvasSize.height;
+      canvas.width = w;
+      canvas.height = h;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw Road
+      const horizon = h * 0.4;
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.moveTo(w * 0.45, horizon);
+      ctx.lineTo(w * 0.55, horizon);
+      ctx.lineTo(w * 1.2, h);
+      ctx.lineTo(-w * 0.2, h);
+      ctx.fill();
+
+      // Lane Lines
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([20, 20]);
+      ctx.lineDashOffset = -localDistance % 40;
+      
+      for (let i = -1.5; i <= 1.5; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(w/2 + (i * 20), horizon);
+        ctx.lineTo(w/2 + (i * 600), h);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // Draw Obstacles
+      localObstacles.forEach(obs => {
+        const relZ = obs.z - localDistance;
+        if (relZ < 0 || relZ > 2000) return;
+
+        const scale = 400 / (relZ + 400);
+        const x = w/2 + (obs.lane * 200 * scale);
+        const y = horizon + (h - horizon) * scale;
+        const size = 60 * scale;
+
+        ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(x - size/2, y - size, size, size);
+        ctx.shadowBlur = 0;
+      });
+
+      // Draw Other Players
+      Object.values(otherPlayers).forEach((p: any) => {
+        const relZ = p.y - localDistance;
+        if (relZ < -100 || relZ > 2000) return;
+
+        const scale = 400 / (relZ + 400);
+        const x = w/2 + (p.x * 200 * scale);
+        const y = horizon + (h - horizon) * scale;
+        const size = 60 * scale;
+
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.6)';
+        ctx.fillRect(x - size/2, y - size, size, size);
+      });
+
+      // Draw Player Car (Simple 3D-ish box)
+      const carX = w/2 + (playerLane * 200 * 0.8);
+      const carY = h - 60;
+      ctx.fillStyle = '#e11d48';
+      ctx.fillRect(carX - 40, carY - 20, 80, 40);
+      ctx.fillStyle = '#f43f5e';
+      ctx.fillRect(carX - 35, carY - 35, 70, 20); // Roof
+      
+      // Emit state to socket
+      if (socket) {
         socket.emit('update-state', {
           roomId,
           state: {
-            x: pos.x,
-            y: pos.y,
-            angle: angle,
-            temp: localEngineTemp,
-            brakeTemp: localBrakeTemp,
-            progress: pos.x / 5000,
+            x: playerLane,
+            y: localDistance,
+            progress: localDistance / 10000
           }
         });
       }
 
-      if (pos.x > 4800) {
+      if (localDistance >= 10000) {
         setGameState('finished');
-        // Award credits based on performance
-        const earned = Math.floor(pos.x / 100);
-        setCredits(prev => prev + earned);
+        return;
       }
-    });
+
+      animFrame = requestAnimationFrame(update);
+    };
+
+    animFrame = requestAnimationFrame(update);
 
     return () => {
-      Matter.Events.off(engine, 'beforeUpdate');
-      Matter.Events.off(render, 'afterRender');
-      Matter.Engine.clear(engine);
-      Matter.Render.stop(render);
-      render.canvas.remove();
+      cancelAnimationFrame(animFrame);
+      canvas.remove();
     };
-  }, [gameState, isConnected, gearRatio, socket, roomId]);
+  }, [gameState, canvasSize, gearRatio]);
 
   const addGear = (x: number, y: number) => {
     const id = `${x}-${y}`;
@@ -912,7 +736,7 @@ export default function App() {
                     </div>
                     <div>
                       <h3 className="font-bold mb-1">3. Race & Control</h3>
-                      <p className="text-sm text-white/60 leading-relaxed">Press <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">SPACE</span> or <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">→</span> to accelerate. Use <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">←</span> to brake.</p>
+                      <p className="text-sm text-white/60 leading-relaxed">Use <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">A / D</span> or <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">← / →</span> to switch lanes. Hold <span className="bg-white/10 px-1.5 py-0.5 rounded text-white">SPACE</span> to boost acceleration.</p>
                     </div>
                   </div>
                   <div className="flex gap-4">
@@ -979,27 +803,12 @@ export default function App() {
                   )}
                 </AnimatePresence>
 
-                {/* Parallax Background Grid Layers */}
-                <div className="absolute inset-0 pointer-events-none opacity-[0.05]" 
-                  style={{ 
-                    backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-                    backgroundSize: '80px 80px',
-                    transform: `translateX(${-(playerBodyRef.current?.position.x || 0) * 0.1}px)`
-                  }} 
-                />
-                <div className="absolute inset-0 pointer-events-none opacity-10" 
-                  style={{ 
-                    backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-                    backgroundSize: '40px 40px',
-                    transform: `translateX(${-(playerBodyRef.current?.position.x || 0) * 0.2}px)`
-                  }} 
-                />
                 {/* Scanline & Vignette */}
                 <div className="absolute inset-0 pointer-events-none z-20 scanline opacity-[0.03]" />
                 <div className="absolute inset-0 pointer-events-none z-20 shadow-[inset_0_0_150px_rgba(0,0,0,0.7)]" />
               </div>
 
-              {/* Mini Map */}
+              {/* Progress Bar */}
               <div className="absolute top-4 left-1/2 -translate-x-1/2 w-64 h-12 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden pointer-events-none">
                 <div className="absolute inset-0 flex items-center px-2">
                   <div className="w-full h-[2px] bg-white/10 relative">
@@ -1008,11 +817,11 @@ export default function App() {
                     {/* Player Dot */}
                     <motion.div 
                       className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-rose-500 rounded-full shadow-[0_0_10px_rgba(244,63,94,0.8)] border-2 border-white"
-                      animate={{ left: `${(playerBodyRef.current?.position.x || 0) / 5000 * 100}%` }}
+                      animate={{ left: `${(distance / 10000) * 100}%` }}
                     />
                   </div>
                 </div>
-                <div className="absolute bottom-1 left-2 text-[6px] font-black text-white/40 uppercase tracking-widest">Mini Map</div>
+                <div className="absolute bottom-1 left-2 text-[6px] font-black text-white/40 uppercase tracking-widest">Progress</div>
               </div>
 
               {/* On-Screen Controls */}
@@ -1027,29 +836,43 @@ export default function App() {
                   </div>
 
                   <div className="flex justify-between items-end">
-                    {/* Left: Brake / Rotate CCW */}
-                    <button
-                      onMouseDown={() => setIsBraking(true)}
-                      onMouseUp={() => setIsBraking(false)}
-                      onTouchStart={() => setIsBraking(true)}
-                      onTouchEnd={() => setIsBraking(false)}
-                      className="pointer-events-auto w-20 h-20 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-95 active:bg-red-500/40 transition-all group"
-                    >
-                      <RotateCcw className="w-8 h-8 text-white group-active:rotate-[-90deg] transition-transform" />
-                      <span className="text-[8px] font-bold mt-1 opacity-50">BRAKE / TILT</span>
-                    </button>
+                    {/* Left: Lane Switch / Brake */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setTargetLane(prev => Math.max(-1, prev - 1))}
+                        className="pointer-events-auto w-16 h-16 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex items-center justify-center active:scale-95 transition-all"
+                      >
+                        <Wind className="w-8 h-8 text-white rotate-180" />
+                      </button>
+                      <button
+                        onMouseDown={() => setIsBraking(true)}
+                        onMouseUp={() => setIsBraking(false)}
+                        onTouchStart={() => setIsBraking(true)}
+                        onTouchEnd={() => setIsBraking(false)}
+                        className="pointer-events-auto w-16 h-16 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-95 active:bg-red-500/40 transition-all group"
+                      >
+                        <RotateCcw className="w-6 h-6 text-white" />
+                      </button>
+                    </div>
 
-                    {/* Right: Gas / Rotate CW */}
-                    <button
-                      onMouseDown={() => setIsAccelerating(true)}
-                      onMouseUp={() => setIsAccelerating(false)}
-                      onTouchStart={() => setIsAccelerating(true)}
-                      onTouchEnd={() => setIsAccelerating(false)}
-                      className="pointer-events-auto w-24 h-24 bg-rose-600/60 backdrop-blur-md border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-95 active:bg-rose-500 transition-all group shadow-xl shadow-rose-600/20"
-                    >
-                      <Play className="w-10 h-10 text-white group-active:scale-110 transition-transform" />
-                      <span className="text-[10px] font-black mt-1">GAS / TILT</span>
-                    </button>
+                    {/* Right: Lane Switch / Gas */}
+                    <div className="flex gap-2">
+                      <button
+                        onMouseDown={() => setIsAccelerating(true)}
+                        onMouseUp={() => setIsAccelerating(false)}
+                        onTouchStart={() => setIsAccelerating(true)}
+                        onTouchEnd={() => setIsAccelerating(false)}
+                        className="pointer-events-auto w-20 h-20 bg-rose-600/60 backdrop-blur-md border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-95 active:bg-rose-500 transition-all group shadow-xl shadow-rose-600/20"
+                      >
+                        <Play className="w-8 h-8 text-white" />
+                      </button>
+                      <button
+                        onClick={() => setTargetLane(prev => Math.min(1, prev + 1))}
+                        className="pointer-events-auto w-16 h-16 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex items-center justify-center active:scale-95 transition-all"
+                      >
+                        <Wind className="w-8 h-8 text-white" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1060,7 +883,7 @@ export default function App() {
                   <div className="text-center">
                     <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
                     <p className="text-xl md:text-3xl font-mono font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-                      {playerBodyRef.current ? (Matter.Vector.magnitude(playerBodyRef.current.velocity) * 5).toFixed(0) : 0}
+                      {(distance / 10).toFixed(0)}
                       <span className="text-[10px] md:text-sm ml-1 opacity-40">km/h</span>
                     </p>
                   </div>
@@ -1095,7 +918,7 @@ export default function App() {
                 <motion.div 
                   className="h-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
                   initial={{ width: 0 }}
-                  animate={{ width: `${(playerState?.progress || 0) * 100}%` }}
+                  animate={{ width: `${(distance / 10000) * 100}%` }}
                 />
                 {(Object.values(otherPlayers) as PlayerState[]).map(p => (
                   <motion.div 
