@@ -1155,7 +1155,7 @@ export default function App() {
                 <div className="relative flex flex-col md:flex-row items-center gap-4">
                   <EngineVisual className="shrink-0 md:block hidden" />
                   
-                  <div className="flex-1 w-full overflow-x-auto pb-20 scrollbar-thin scrollbar-thumb-white/10">
+                  <div className="flex-1 w-full overflow-x-auto py-24 scrollbar-thin scrollbar-thumb-white/10">
                     <div 
                       className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[200px] gear-grid-bg relative min-w-[500px] md:min-w-[600px] overflow-visible"
                       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
@@ -1203,10 +1203,10 @@ export default function App() {
                           <AnimatePresence>
                             {selectedGearId === gear?.id && (
                               <motion.div 
-                                initial={{ opacity: 0, scale: 0.8, y: y === 0 ? 10 : -10 }}
+                                initial={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.8, y: y === 0 ? 10 : -10 }}
-                                className={`absolute z-[500] ${y === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-3 shadow-[0_0_50px_rgba(0,0,0,0.8)] min-w-[180px]`}
+                                exit={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
+                                className={`absolute z-[500] ${y < 2 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-3 shadow-[0_0_50px_rgba(0,0,0,0.9)] min-w-[180px]`}
                               >
                                 <div className="flex justify-between items-center mb-2">
                                   <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Select Teeth</p>
