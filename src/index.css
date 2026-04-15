@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #050505;
+  color: #ffffff;
+  margin: 0;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+@keyframes smoke {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.8; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(2); opacity: 0; }
+}
+
+.animate-smoke {
+  animation: smoke 1s ease-out forwards;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.scanline {
+  background: linear-gradient(to bottom, transparent, rgba(225, 29, 72, 0.1), transparent);
+  animation: scanline 4s linear infinite;
+}
+
+.gear-grid-bg {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-size: 40px 40px;
+}
+
+#root {
+  min-height: 100vh;
+}

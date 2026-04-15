@@ -1,0 +1,6 @@
+{
+  "name": "Remix: Gear Race: Hill Climb Multiplayer",
+  "description": "A physics-based racing game where you build complex gear systems to power your machine across challenging terrain. Features real-time multiplayer and thermal management mechanics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
