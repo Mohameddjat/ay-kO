@@ -117,10 +117,14 @@ export default function App() {
   const [playerLane, setPlayerLane] = useState(0); // -1, 0, 1
   const [targetLane, setTargetLane] = useState(0);
   const targetLaneRef = useRef(0);
+  const lastLaneChangeZRef = useRef(0);
   const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string }[]>([]);
 
   useEffect(() => {
-    targetLaneRef.current = targetLane;
+    if (targetLane !== targetLaneRef.current) {
+      lastLaneChangeZRef.current = distance;
+      targetLaneRef.current = targetLane;
+    }
   }, [targetLane]);
   const [distance, setDistance] = useState(0);
   const [showInstructions, setShowInstructions] = useState(true);
@@ -326,11 +330,14 @@ export default function App() {
 
     let animFrame: number;
     let lastTime = performance.now();
-    let localDistance = 0;
-    let localSpeed = 0;
-    let localObstacles: { id: string, lane: number, z: number, type: string }[] = [];
-    let localEngineTemp = 20;
+    let localDistance = distance;
+    let localSpeed = currentSpeed;
+    let localPlayerLane = playerLane;
+    let localObstacles: { id: string, lane: number, z: number, type: string, processed?: boolean, oldLane?: number }[] = [];
+    let localEngineTemp = engineTemp;
     let screenShake = 0;
+    let localBoostTimer = 0;
+    let nearMissText: { text: string, x: number, y: number, opacity: number } | null = null;
     
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
@@ -347,8 +354,17 @@ export default function App() {
       
       // Realistic Speed calculation
       const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
-      const topSpeed = 200 + (gearRatio * 300 * efficiency); // Top speed depends on gear ratio
-      const acceleration = 150 * efficiency;
+      let topSpeed = 200 + (gearRatio * 300 * efficiency); 
+      let acceleration = 150 * efficiency;
+      
+      // Apply Boost
+      if (localBoostTimer > 0) {
+        topSpeed *= 1.5;
+        acceleration *= 2;
+        localBoostTimer -= dt;
+        setBoostTime(localBoostTimer);
+      }
+
       const drag = 0.5; // Air resistance
       const friction = 20; // Ground friction
 
@@ -366,11 +382,10 @@ export default function App() {
       setCurrentSpeed(localSpeed);
 
       // Lane interpolation
-      setPlayerLane(prev => {
-        const diff = targetLaneRef.current - prev;
-        if (Math.abs(diff) < 0.01) return targetLaneRef.current;
-        return prev + diff * 10 * dt;
-      });
+      const diff = targetLaneRef.current - localPlayerLane;
+      if (Math.abs(diff) < 0.01) localPlayerLane = targetLaneRef.current;
+      else localPlayerLane += diff * 10 * dt;
+      setPlayerLane(localPlayerLane);
 
       // Heat management
       if (activeAcceleration) {
@@ -407,11 +422,30 @@ export default function App() {
         const relativeZ = obs.z - localDistance;
         
         // Collision detection
-        if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLane) < 0.5) {
+        if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLaneRef.current) < 0.5) {
           localEngineTemp += 15;
           localSpeed *= 0.4; // Significant speed penalty
           screenShake = 20; // Trigger screen shake
           return false;
+        }
+
+        // Near Miss Detection
+        if (relativeZ < 0 && !obs.processed) {
+          obs.processed = true;
+          const lateralDist = Math.abs(localPlayerLane - obs.lane);
+          // Reward close dodges (lateral distance between 0.5 and 1.2)
+          if (lateralDist > 0.5 && lateralDist < 1.2) {
+            let boost = 0;
+            if (lateralDist < 0.6) boost = 6; // Very close (1m equivalent)
+            else if (lateralDist < 0.8) boost = 4; // Close (4m equivalent)
+            else if (lateralDist < 1.1) boost = 2; // Near (10m equivalent)
+            
+            if (boost > 0) {
+              localBoostTimer += boost;
+              setBoostTime(localBoostTimer);
+              setLastBoostType('NEAR MISS');
+            }
+          }
         }
         
         return relativeZ > -100;
@@ -434,25 +468,25 @@ export default function App() {
       ctx.clearRect(0, 0, w, h);
 
       // Draw Road
-      const horizon = h * 0.4;
+      const horizon = h * 0.45;
       ctx.fillStyle = '#111';
       ctx.beginPath();
-      ctx.moveTo(w * 0.45, horizon);
-      ctx.lineTo(w * 0.55, horizon);
-      ctx.lineTo(w * 1.2, h);
-      ctx.lineTo(-w * 0.2, h);
+      ctx.moveTo(w * 0.48, horizon);
+      ctx.lineTo(w * 0.52, horizon);
+      ctx.lineTo(w * 1.5, h);
+      ctx.lineTo(-w * 0.5, h);
       ctx.fill();
 
       // Lane Lines
       ctx.strokeStyle = '#e11d48';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([20, 20]);
-      ctx.lineDashOffset = -localDistance % 40;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([30, 30]);
+      ctx.lineDashOffset = -localDistance % 60;
       
       for (let i = -1.5; i <= 1.5; i += 1) {
         ctx.beginPath();
-        ctx.moveTo(w/2 + (i * 20), horizon);
-        ctx.lineTo(w/2 + (i * 600), h);
+        ctx.moveTo(w/2 + (i * 15), horizon);
+        ctx.lineTo(w/2 + (i * 800), h);
         ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -463,9 +497,9 @@ export default function App() {
         if (relZ < 0 || relZ > 2000) return;
 
         const scale = 400 / (relZ + 400);
-        const x = w/2 + (obs.lane * 200 * scale);
+        const x = w/2 + (obs.lane * 250 * scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 60 * scale;
+        const size = 80 * scale;
 
         ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
         ctx.shadowBlur = 10;
@@ -488,13 +522,40 @@ export default function App() {
         ctx.fillRect(x - size/2, y - size, size, size);
       });
 
-      // Draw Player Car (Simple 3D-ish box)
-      const carX = w/2 + (playerLane * 200 * 0.8);
-      const carY = h - 60;
+      // Draw Player Car (Improved 3D-ish model and positioning)
+      const carScale = 0.9;
+      const carX = w/2 + (localPlayerLane * 250 * carScale);
+      const carY = h - 120;
+      
+      // Car Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(carX, carY + 10, 45, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Car Body
       ctx.fillStyle = '#e11d48';
-      ctx.fillRect(carX - 40, carY - 20, 80, 40);
+      ctx.beginPath();
+      ctx.roundRect(carX - 40, carY - 20, 80, 40, 8);
+      ctx.fill();
+      
+      // Car Roof
       ctx.fillStyle = '#f43f5e';
-      ctx.fillRect(carX - 35, carY - 35, 70, 20); // Roof
+      ctx.beginPath();
+      ctx.roundRect(carX - 30, carY - 35, 60, 25, 5);
+      ctx.fill();
+
+      // Windows
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(carX - 25, carY - 32, 50, 15);
+      
+      // Tail Lights
+      ctx.fillStyle = isBraking ? '#ff0000' : '#991b1b';
+      ctx.shadowBlur = isBraking ? 15 : 0;
+      ctx.shadowColor = '#ff0000';
+      ctx.fillRect(carX - 35, carY - 5, 15, 8);
+      ctx.fillRect(carX + 20, carY - 5, 15, 8);
+      ctx.shadowBlur = 0;
       
       ctx.restore();
 
