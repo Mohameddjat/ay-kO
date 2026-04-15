@@ -15,7 +15,9 @@ import {
   Coins,
   Flame,
   Wind,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Gear, PlayerState, GameRoom } from './types';
 
@@ -843,42 +845,44 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-end">
+                  <div className="flex justify-between items-end gap-4">
                     {/* Left: Lane Switch / Brake */}
-                    <div className="flex gap-2">
+                    <div className="flex gap-3">
                       <button
                         onClick={() => setTargetLane(prev => Math.max(-1, prev - 1))}
-                        className="pointer-events-auto w-16 h-16 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex items-center justify-center active:scale-95 transition-all"
+                        className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
                       >
-                        <Wind className="w-8 h-8 text-white rotate-180" />
+                        <ChevronLeft className="w-10 h-10 text-white" />
                       </button>
                       <button
                         onMouseDown={() => setIsBraking(true)}
                         onMouseUp={() => setIsBraking(false)}
                         onTouchStart={() => setIsBraking(true)}
                         onTouchEnd={() => setIsBraking(false)}
-                        className="pointer-events-auto w-16 h-16 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-95 active:bg-red-500/40 transition-all group"
+                        className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-black/60 backdrop-blur-xl border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-90 active:bg-red-500/40 transition-all shadow-lg shadow-black/40"
                       >
                         <RotateCcw className="w-6 h-6 text-white" />
+                        <span className="text-[8px] font-bold text-white/40 uppercase mt-1">Brake</span>
                       </button>
                     </div>
 
                     {/* Right: Lane Switch / Gas */}
-                    <div className="flex gap-2">
+                    <div className="flex gap-3">
                       <button
                         onMouseDown={() => setIsAccelerating(true)}
                         onMouseUp={() => setIsAccelerating(false)}
                         onTouchStart={() => setIsAccelerating(true)}
                         onTouchEnd={() => setIsAccelerating(false)}
-                        className="pointer-events-auto w-20 h-20 bg-rose-600/60 backdrop-blur-md border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-95 active:bg-rose-500 transition-all group shadow-xl shadow-rose-600/20"
+                        className="pointer-events-auto w-20 h-20 md:w-24 md:h-24 bg-rose-600/80 backdrop-blur-xl border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-90 active:bg-rose-500 transition-all shadow-2xl shadow-rose-600/40"
                       >
-                        <Play className="w-8 h-8 text-white" />
+                        <Play className="w-10 h-10 text-white fill-current" />
+                        <span className="text-[10px] font-black text-white uppercase mt-1">Boost</span>
                       </button>
                       <button
                         onClick={() => setTargetLane(prev => Math.min(1, prev + 1))}
-                        className="pointer-events-auto w-16 h-16 bg-black/60 backdrop-blur-md border-2 border-white/20 rounded-2xl flex items-center justify-center active:scale-95 transition-all"
+                        className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
                       >
-                        <Wind className="w-8 h-8 text-white" />
+                        <ChevronRight className="w-10 h-10 text-white" />
                       </button>
                     </div>
                   </div>
