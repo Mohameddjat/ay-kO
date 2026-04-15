@@ -119,7 +119,9 @@ export default function App() {
   const [targetLane, setTargetLane] = useState(0);
   const targetLaneRef = useRef(0);
   const lastLaneChangeZRef = useRef(0);
-  const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string }[]>([]);
+  const nextObstacleZRef = useRef(0);
+  const nearMissTextRef = useRef<{text: string, x: number, y: number, opacity: number} | null>(null);
+  const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string, processed?: boolean }[]>([]);
 
   useEffect(() => {
     if (targetLane !== targetLaneRef.current) {
@@ -408,14 +410,15 @@ export default function App() {
         return;
       }
 
-      // Obstacle generation
-      if (Math.random() < 0.02) {
+      // Obstacle generation (Distance-based for better spacing)
+      if (localDistance > nextObstacleZRef.current) {
         localObstacles.push({
           id: Math.random().toString(36).substr(2, 9),
           lane: Math.floor(Math.random() * 3) - 1,
-          z: localDistance + 2000,
-          type: Math.random() > 0.5 ? 'crate' : 'bump'
+          z: localDistance + 2500,
+          type: Math.random() > 0.5 ? 'crate' : 'barrier'
         });
+        nextObstacleZRef.current = localDistance + 1500 + Math.random() * 1000;
       }
 
       // Filter and collision
@@ -427,24 +430,30 @@ export default function App() {
           localEngineTemp += 15;
           localSpeed *= 0.4; // Significant speed penalty
           screenShake = 20; // Trigger screen shake
+          localBoostTimer = 0; // Cancel boost on hit
           return false;
         }
 
-        // Near Miss Detection
-        if (relativeZ < 0 && !obs.processed) {
-          obs.processed = true;
+        // Near Miss Detection (Trigger when approaching closely)
+        if (relativeZ > 0 && relativeZ < 150 && !obs.processed) {
           const lateralDist = Math.abs(localPlayerLane - obs.lane);
-          // Reward close dodges (lateral distance between 0.5 and 1.2)
-          if (lateralDist > 0.5 && lateralDist < 1.2) {
+          const zDistSinceChange = localDistance - lastLaneChangeZRef.current;
+          
+          // Only trigger if we just changed lane or are in a different lane
+          if (lateralDist > 0.6 && lateralDist < 1.4 && zDistSinceChange < 300) {
+            obs.processed = true;
             let boost = 0;
-            if (lateralDist < 0.6) boost = 6; // Very close (1m equivalent)
-            else if (lateralDist < 0.8) boost = 4; // Close (4m equivalent)
-            else if (lateralDist < 1.1) boost = 2; // Near (10m equivalent)
+            let msg = "";
+            
+            if (lateralDist < 0.8) { boost = 6; msg = "EXTREME MISS! +6s"; }
+            else if (lateralDist < 1.0) { boost = 4; msg = "CLOSE MISS! +4s"; }
+            else if (lateralDist < 1.3) { boost = 2; msg = "NEAR MISS! +2s"; }
             
             if (boost > 0) {
               localBoostTimer += boost;
               setBoostTime(localBoostTimer);
               setLastBoostType('NEAR MISS');
+              nearMissTextRef.current = { text: msg, x: 0, y: 0, opacity: 1 };
             }
           }
         }
@@ -562,6 +571,17 @@ export default function App() {
       ctx.fillRect(carX + 20, carY - 5, 15, 8);
       ctx.shadowBlur = 0;
       
+      // Draw Near Miss Text
+      if (nearMissTextRef.current) {
+        const t = nearMissTextRef.current;
+        ctx.fillStyle = `rgba(251, 191, 36, ${t.opacity})`;
+        ctx.font = 'bold 24px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText(t.text, w/2, h/2 - 50);
+        t.opacity -= dt * 1.5;
+        if (t.opacity <= 0) nearMissTextRef.current = null;
+      }
+
       ctx.restore();
 
       // Emit state to socket
@@ -1135,9 +1155,9 @@ export default function App() {
                 <div className="relative flex flex-col md:flex-row items-center gap-4">
                   <EngineVisual className="shrink-0 md:block hidden" />
                   
-                  <div className="flex-1 w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
+                  <div className="flex-1 w-full overflow-x-auto pb-20 scrollbar-thin scrollbar-thumb-white/10">
                     <div 
-                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[150px] gear-grid-bg relative min-w-[500px] md:min-w-[600px]"
+                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[200px] gear-grid-bg relative min-w-[500px] md:min-w-[600px] overflow-visible"
                       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
                     >
                       <div className="absolute inset-0 scanline pointer-events-none rounded-xl overflow-hidden" />
@@ -1149,7 +1169,7 @@ export default function App() {
                       const isWheel = x === GRID_COLS - 1;
 
                       return (
-                        <div key={i} className={`relative ${selectedGearId === gear?.id ? 'z-[100]' : 'z-0'}`}>
+                        <div key={i} className={`relative ${selectedGearId === gear?.id ? 'z-[300]' : 'z-0'}`}>
                           <button
                             onClick={() => addGear(x, y)}
                             className={`w-full aspect-square min-h-[30px] rounded-md transition-all flex items-center justify-center relative group overflow-hidden border border-white/5 ${
@@ -1186,7 +1206,7 @@ export default function App() {
                                 initial={{ opacity: 0, scale: 0.8, y: y === 0 ? 10 : -10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.8, y: y === 0 ? 10 : -10 }}
-                                className={`absolute z-[200] ${y === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-3 shadow-[0_0_50px_rgba(0,0,0,0.8)] min-w-[160px]`}
+                                className={`absolute z-[500] ${y === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-3 shadow-[0_0_50px_rgba(0,0,0,0.8)] min-w-[180px]`}
                               >
                                 <div className="flex justify-between items-center mb-2">
                                   <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Select Teeth</p>
@@ -1194,7 +1214,7 @@ export default function App() {
                                     <X className="w-3 h-3" />
                                   </button>
                                 </div>
-                                <div className="grid grid-cols-3 gap-1">
+                                <div className="grid grid-cols-4 gap-1">
                                   {GEAR_TYPES.map(t => (
                                     <button
                                       key={t}
@@ -1202,7 +1222,7 @@ export default function App() {
                                         e.stopPropagation();
                                         setTeeth(gear.id, t);
                                       }}
-                                      className={`px-2 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                                      className={`px-1 py-1.5 rounded-md text-[10px] font-bold transition-colors ${
                                         gear.teeth === t ? 'bg-rose-600 text-white' : 'hover:bg-white/10 text-white/60'
                                       }`}
                                     >
@@ -1217,7 +1237,7 @@ export default function App() {
                                       removeGear(gear.id);
                                       setSelectedGearId(null);
                                     }}
-                                    className="w-full px-2 py-1.5 rounded-md text-[10px] font-bold text-red-400 hover:bg-red-500/10 transition-colors uppercase"
+                                    className="w-full py-1.5 text-[10px] font-bold text-red-400 hover:bg-red-500/10 rounded transition-colors uppercase"
                                   >
                                     Remove Gear
                                   </button>
