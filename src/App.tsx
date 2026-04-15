@@ -116,7 +116,12 @@ export default function App() {
   const [isBraking, setIsBraking] = useState(false);
   const [playerLane, setPlayerLane] = useState(0); // -1, 0, 1
   const [targetLane, setTargetLane] = useState(0);
+  const targetLaneRef = useRef(0);
   const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string }[]>([]);
+
+  useEffect(() => {
+    targetLaneRef.current = targetLane;
+  }, [targetLane]);
   const [distance, setDistance] = useState(0);
   const [showInstructions, setShowInstructions] = useState(true);
   const [connectedGears, setConnectedGears] = useState<string[]>([]);
@@ -362,8 +367,8 @@ export default function App() {
 
       // Lane interpolation
       setPlayerLane(prev => {
-        const diff = targetLane - prev;
-        if (Math.abs(diff) < 0.1) return targetLane;
+        const diff = targetLaneRef.current - prev;
+        if (Math.abs(diff) < 0.01) return targetLaneRef.current;
         return prev + diff * 10 * dt;
       });
 
@@ -793,6 +798,36 @@ export default function App() {
               </div>
             </div>
 
+            {/* Dashboard Overlay - Moved to top for better visibility */}
+            <div className="absolute top-16 left-4 right-4 flex justify-between items-start pointer-events-none z-30">
+              <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 md:p-3 flex gap-4 shadow-xl">
+                <div className="text-center">
+                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
+                  <p className="text-lg md:text-2xl font-mono font-black text-white">
+                    {(currentSpeed / 10).toFixed(0)}
+                    <span className="text-[10px] ml-1 opacity-40">km/h</span>
+                  </p>
+                </div>
+                <div className="w-[1px] bg-white/10" />
+                <div className="text-center">
+                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                  <p className="text-lg md:text-2xl font-mono font-black text-green-400">
+                    {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 md:p-3 shadow-xl hidden sm:block">
+                <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Engine Load</p>
+                <div className="w-20 md:w-32 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-blue-600 to-blue-400"
+                    animate={{ width: `${Math.min(100, (gearRatio * 5))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex-1 relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] min-h-[250px]">
               <div ref={canvasRef} className="w-full h-full relative">
                 {/* Boost Notification */}
@@ -833,92 +868,62 @@ export default function App() {
                 </div>
                 <div className="absolute bottom-1 left-2 text-[6px] font-black text-white/40 uppercase tracking-widest">Progress</div>
               </div>
+            </div>
 
-              {/* On-Screen Controls */}
-              {gameState === 'racing' && (
-                <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
-                  <div className="flex justify-center">
-                    <div className="bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
-                      <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">
-                        {isAutoDrive ? 'Auto-Drive Active' : 'Manual Control'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-end gap-4">
-                    {/* Left: Lane Switch / Brake */}
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setTargetLane(prev => Math.max(-1, prev - 1))}
-                        className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
-                      >
-                        <ChevronLeft className="w-10 h-10 text-white" />
-                      </button>
-                      <button
-                        onMouseDown={() => setIsBraking(true)}
-                        onMouseUp={() => setIsBraking(false)}
-                        onTouchStart={() => setIsBraking(true)}
-                        onTouchEnd={() => setIsBraking(false)}
-                        className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-black/60 backdrop-blur-xl border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-90 active:bg-red-500/40 transition-all shadow-lg shadow-black/40"
-                      >
-                        <RotateCcw className="w-6 h-6 text-white" />
-                        <span className="text-[8px] font-bold text-white/40 uppercase mt-1">Brake</span>
-                      </button>
-                    </div>
-
-                    {/* Right: Lane Switch / Gas */}
-                    <div className="flex gap-3">
-                      <button
-                        onMouseDown={() => setIsAccelerating(true)}
-                        onMouseUp={() => setIsAccelerating(false)}
-                        onTouchStart={() => setIsAccelerating(true)}
-                        onTouchEnd={() => setIsAccelerating(false)}
-                        className="pointer-events-auto w-20 h-20 md:w-24 md:h-24 bg-rose-600/80 backdrop-blur-xl border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-90 active:bg-rose-500 transition-all shadow-2xl shadow-rose-600/40"
-                      >
-                        <Play className="w-10 h-10 text-white fill-current" />
-                        <span className="text-[10px] font-black text-white uppercase mt-1">Boost</span>
-                      </button>
-                      <button
-                        onClick={() => setTargetLane(prev => Math.min(1, prev + 1))}
-                        className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
-                      >
-                        <ChevronRight className="w-10 h-10 text-white" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Dashboard Overlay */}
-              <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 right-2 md:right-4 flex justify-between items-end pointer-events-none">
-                <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-2 md:p-4 flex gap-3 md:gap-6 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-                  <div className="text-center">
-                    <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                    <p className="text-xl md:text-3xl font-mono font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-                      {(currentSpeed / 10).toFixed(0)}
-                      <span className="text-[10px] md:text-sm ml-1 opacity-40">km/h</span>
-                    </p>
-                  </div>
-                  <div className="w-[1px] bg-white/10" />
-                  <div className="text-center">
-                    <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                    <p className="text-xl md:text-3xl font-mono font-black text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.3)]">
-                      {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
+            {/* On-Screen Controls - Moved outside canvas to avoid blocking view */}
+            {gameState === 'racing' && (
+              <div className="mt-4 pointer-events-none">
+                <div className="flex justify-center mb-4">
+                  <div className="bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
+                    <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">
+                      {isAutoDrive ? 'Auto-Drive Active' : 'Manual Control'}
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-2 md:p-4 shadow-[0_0_30px_rgba(0,0,0,0.5)] hidden sm:block">
-                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-2">Engine Load</p>
-                  <div className="w-24 md:w-40 h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                    <motion.div 
-                      className="h-full bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
-                      animate={{ width: `${Math.min(100, (gearRatio * 5))}%` }}
-                    />
+                <div className="flex justify-between items-end gap-4">
+                  {/* Left: Lane Switch / Brake */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setTargetLane(prev => Math.max(-1, prev - 1))}
+                      className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
+                    >
+                      <ChevronLeft className="w-10 h-10 text-white" />
+                    </button>
+                    <button
+                      onMouseDown={() => setIsBraking(true)}
+                      onMouseUp={() => setIsBraking(false)}
+                      onTouchStart={() => setIsBraking(true)}
+                      onTouchEnd={() => setIsBraking(false)}
+                      className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-black/60 backdrop-blur-xl border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-90 active:bg-red-500/40 transition-all shadow-lg shadow-black/40"
+                    >
+                      <RotateCcw className="w-6 h-6 text-white" />
+                      <span className="text-[8px] font-bold text-white/40 uppercase mt-1">Brake</span>
+                    </button>
+                  </div>
+
+                  {/* Right: Lane Switch / Gas */}
+                  <div className="flex gap-3">
+                    <button
+                      onMouseDown={() => setIsAccelerating(true)}
+                      onMouseUp={() => setIsAccelerating(false)}
+                      onTouchStart={() => setIsAccelerating(true)}
+                      onTouchEnd={() => setIsAccelerating(false)}
+                      className="pointer-events-auto w-20 h-20 md:w-24 md:h-24 bg-rose-600/80 backdrop-blur-xl border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-90 active:bg-rose-500 transition-all shadow-2xl shadow-rose-600/40"
+                    >
+                      <Play className="w-10 h-10 text-white fill-current" />
+                      <span className="text-[10px] font-black text-white uppercase mt-1">Boost</span>
+                    </button>
+                    <button
+                      onClick={() => setTargetLane(prev => Math.min(1, prev + 1))}
+                      className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
+                    >
+                      <ChevronRight className="w-10 h-10 text-white" />
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Progress Bar */}
             <div className="mt-4 space-y-2">
