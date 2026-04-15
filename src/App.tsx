@@ -26,6 +26,101 @@ const GRID_COLS = 12;
 const GRID_ROWS = 3;
 const CELL_SIZE = 40;
 const GEAR_TYPES = [8, 16, 24, 32, 48, 64, 80, 96, 128, 160, 192, 256];
+const TRACK_LENGTH = 100000;
+
+// Audio System
+class SoundManager {
+  private ctx: AudioContext | null = null;
+  private engineOsc: OscillatorNode | null = null;
+  private engineGain: GainNode | null = null;
+
+  init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+
+  playClick() {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.1);
+  }
+
+  playBoost() {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.5);
+    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.5);
+  }
+
+  playCrash() {
+    if (!this.ctx) return;
+    const bufferSize = this.ctx.sampleRate * 0.5;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+    noise.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start();
+  }
+
+  startEngine() {
+    if (!this.ctx || this.engineOsc) return;
+    this.engineOsc = this.ctx.createOscillator();
+    this.engineGain = this.ctx.createGain();
+    this.engineOsc.type = 'sawtooth';
+    this.engineOsc.frequency.setValueAtTime(50, this.ctx.currentTime);
+    this.engineGain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+    
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(200, this.ctx.currentTime);
+    
+    this.engineOsc.connect(filter);
+    filter.connect(this.engineGain);
+    this.engineGain.connect(this.ctx.destination);
+    this.engineOsc.start();
+  }
+
+  updateEngine(speed: number, isAccelerating: boolean) {
+    if (!this.ctx || !this.engineOsc || !this.engineGain) return;
+    const freq = 40 + (speed * 0.2);
+    this.engineOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.1);
+    const volume = isAccelerating ? 0.05 : 0.02;
+    this.engineGain.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.1);
+  }
+
+  stopEngine() {
+    if (this.engineOsc) {
+      this.engineOsc.stop();
+      this.engineOsc = null;
+    }
+  }
+}
+
+const sounds = new SoundManager();
 
 const GearIcon = ({ teeth, color, className, rotation = 0 }: { teeth: number, color: string, className?: string, rotation?: number }) => {
   const points = [];
@@ -91,20 +186,28 @@ export default function App() {
   const [roomId, setRoomId] = useState('main-race');
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [otherPlayers, setOtherPlayers] = useState<Record<string, PlayerState>>({});
-  const [gears, setGears] = useState<Gear[]>([
-    { id: '0-1', x: 0, y: 1, teeth: 16, type: 'intermediate' },
-    { id: '1-1', x: 1, y: 1, teeth: 16, type: 'intermediate' },
-    { id: '2-1', x: 2, y: 1, teeth: 32, type: 'intermediate' },
-    { id: '3-1', x: 3, y: 1, teeth: 32, type: 'intermediate' },
-    { id: '4-1', x: 4, y: 1, teeth: 48, type: 'intermediate' },
-    { id: '5-1', x: 5, y: 1, teeth: 48, type: 'intermediate' },
-    { id: '6-1', x: 6, y: 1, teeth: 64, type: 'intermediate' },
-    { id: '7-1', x: 7, y: 1, teeth: 64, type: 'intermediate' },
-    { id: '8-1', x: 8, y: 1, teeth: 80, type: 'intermediate' },
-    { id: '9-1', x: 9, y: 1, teeth: 96, type: 'intermediate' },
-    { id: '10-1', x: 10, y: 1, teeth: 128, type: 'intermediate' },
-    { id: '11-1', x: 11, y: 1, teeth: 128, type: 'intermediate' },
-  ]);
+  const [gears, setGears] = useState<Gear[]>(() => {
+    const saved = localStorage.getItem('gear_race_gears');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: '0-1', x: 0, y: 1, teeth: 16, type: 'intermediate' },
+      { id: '1-1', x: 1, y: 1, teeth: 16, type: 'intermediate' },
+      { id: '2-1', x: 2, y: 1, teeth: 32, type: 'intermediate' },
+      { id: '3-1', x: 3, y: 1, teeth: 32, type: 'intermediate' },
+      { id: '4-1', x: 4, y: 1, teeth: 48, type: 'intermediate' },
+      { id: '5-1', x: 5, y: 1, teeth: 48, type: 'intermediate' },
+      { id: '6-1', x: 6, y: 1, teeth: 64, type: 'intermediate' },
+      { id: '7-1', x: 7, y: 1, teeth: 64, type: 'intermediate' },
+      { id: '8-1', x: 8, y: 1, teeth: 80, type: 'intermediate' },
+      { id: '9-1', x: 9, y: 1, teeth: 96, type: 'intermediate' },
+      { id: '10-1', x: 10, y: 1, teeth: 128, type: 'intermediate' },
+      { id: '11-1', x: 11, y: 1, teeth: 128, type: 'intermediate' },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('gear_race_gears', JSON.stringify(gears));
+  }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
   const [isGarageOpen, setIsGarageOpen] = useState(true);
   const [gearRatio, setGearRatio] = useState(1);
@@ -349,11 +452,19 @@ export default function App() {
     canvasRef.current?.appendChild(canvas);
 
     const update = (time: number) => {
+      if (gameState !== 'racing') {
+        sounds.stopEngine();
+        return;
+      }
+      sounds.startEngine();
+
       const dt = (time - lastTime) / 1000;
       lastTime = time;
 
       const { isAccelerating: acc, isAutoDrive: auto, isBraking: brake } = controlsRef.current;
       const activeAcceleration = acc || auto;
+
+      sounds.updateEngine(localSpeed, activeAcceleration);
       
       // Realistic Speed calculation
       const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
@@ -431,6 +542,7 @@ export default function App() {
           localSpeed *= 0.4; // Significant speed penalty
           screenShake = 20; // Trigger screen shake
           localBoostTimer = 0; // Cancel boost on hit
+          sounds.playCrash();
           return false;
         }
 
@@ -454,6 +566,7 @@ export default function App() {
               setBoostTime(localBoostTimer);
               setLastBoostType('NEAR MISS');
               nearMissTextRef.current = { text: msg, x: 0, y: 0, opacity: 1 };
+              sounds.playBoost();
             }
           }
         }
@@ -591,13 +704,14 @@ export default function App() {
           state: {
             x: playerLane,
             y: localDistance,
-            progress: localDistance / 10000
+            progress: localDistance / TRACK_LENGTH
           }
         });
       }
 
-      if (localDistance >= 10000) {
+      if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
+        sounds.stopEngine();
         return;
       }
 
@@ -613,6 +727,8 @@ export default function App() {
   }, [gameState, canvasSize, gearRatio]);
 
   const addGear = (x: number, y: number) => {
+    sounds.init();
+    sounds.playClick();
     const id = `${x}-${y}`;
     const existingGear = gears.find(g => g.id === id);
     if (existingGear) {
@@ -948,7 +1064,7 @@ export default function App() {
                     {/* Player Dot */}
                     <motion.div 
                       className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-rose-500 rounded-full shadow-[0_0_10px_rgba(244,63,94,0.8)] border-2 border-white"
-                      animate={{ left: `${(distance / 10000) * 100}%` }}
+                      animate={{ left: `${(distance / TRACK_LENGTH) * 100}%` }}
                     />
                   </div>
                 </div>
@@ -1021,7 +1137,7 @@ export default function App() {
                 <motion.div 
                   className="h-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
                   initial={{ width: 0 }}
-                  animate={{ width: `${(distance / 10000) * 100}%` }}
+                  animate={{ width: `${(distance / TRACK_LENGTH) * 100}%` }}
                 />
                 {(Object.values(otherPlayers) as PlayerState[]).map(p => (
                   <motion.div 
