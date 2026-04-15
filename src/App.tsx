@@ -17,7 +17,8 @@ import {
   Wind,
   Check,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 import { Gear, PlayerState, GameRoom } from './types';
 
@@ -468,7 +469,7 @@ export default function App() {
       ctx.clearRect(0, 0, w, h);
 
       // Draw Road
-      const horizon = h * 0.45;
+      const horizon = h * 0.35; // Higher horizon for better view of the track
       ctx.fillStyle = '#111';
       ctx.beginPath();
       ctx.moveTo(w * 0.48, horizon);
@@ -478,7 +479,7 @@ export default function App() {
       ctx.fill();
 
       // Lane Lines
-      ctx.strokeStyle = '#e11d48';
+      ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : '#e11d48';
       ctx.lineWidth = 3;
       ctx.setLineDash([30, 30]);
       ctx.lineDashOffset = -localDistance % 60;
@@ -502,8 +503,10 @@ export default function App() {
         const size = 80 * scale;
 
         ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        if (localBoostTimer > 0) {
+          ctx.shadowColor = '#fbbf24';
+          ctx.shadowBlur = 20;
+        }
         ctx.fillRect(x - size/2, y - size, size, size);
         ctx.shadowBlur = 0;
       });
@@ -514,9 +517,9 @@ export default function App() {
         if (relZ < -100 || relZ > 2000) return;
 
         const scale = 400 / (relZ + 400);
-        const x = w/2 + (p.x * 200 * scale);
+        const x = w/2 + (p.x * 250 * scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 60 * scale;
+        const size = 80 * scale;
 
         ctx.fillStyle = 'rgba(59, 130, 246, 0.6)';
         ctx.fillRect(x - size/2, y - size, size, size);
@@ -525,7 +528,7 @@ export default function App() {
       // Draw Player Car (Improved 3D-ish model and positioning)
       const carScale = 0.9;
       const carX = w/2 + (localPlayerLane * 250 * carScale);
-      const carY = h - 120;
+      const carY = h - 80; // Lower car for better view of obstacles ahead
       
       // Car Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -534,13 +537,15 @@ export default function App() {
       ctx.fill();
 
       // Car Body
-      ctx.fillStyle = '#e11d48';
+      ctx.fillStyle = localBoostTimer > 0 ? '#fbbf24' : '#e11d48';
+      ctx.shadowBlur = localBoostTimer > 0 ? 30 : 0;
+      ctx.shadowColor = '#fbbf24';
       ctx.beginPath();
       ctx.roundRect(carX - 40, carY - 20, 80, 40, 8);
       ctx.fill();
       
       // Car Roof
-      ctx.fillStyle = '#f43f5e';
+      ctx.fillStyle = localBoostTimer > 0 ? '#fef3c7' : '#f43f5e';
       ctx.beginPath();
       ctx.roundRect(carX - 30, carY - 35, 60, 25, 5);
       ctx.fill();
@@ -1144,7 +1149,7 @@ export default function App() {
                       const isWheel = x === GRID_COLS - 1;
 
                       return (
-                        <div key={i} className="relative">
+                        <div key={i} className={`relative ${selectedGearId === gear?.id ? 'z-[100]' : 'z-0'}`}>
                           <button
                             onClick={() => addGear(x, y)}
                             className={`w-full aspect-square min-h-[30px] rounded-md transition-all flex items-center justify-center relative group overflow-hidden border border-white/5 ${
@@ -1181,9 +1186,14 @@ export default function App() {
                                 initial={{ opacity: 0, scale: 0.8, y: y === 0 ? 10 : -10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.8, y: y === 0 ? 10 : -10 }}
-                                className={`absolute z-[100] ${y === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-2 shadow-2xl min-w-[140px]`}
+                                className={`absolute z-[200] ${y === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-3 shadow-[0_0_50px_rgba(0,0,0,0.8)] min-w-[160px]`}
                               >
-                                <p className="text-[10px] font-bold text-white/40 uppercase mb-2 px-2">Select Teeth</p>
+                                <div className="flex justify-between items-center mb-2">
+                                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Select Teeth</p>
+                                  <button onClick={(e) => { e.stopPropagation(); setSelectedGearId(null); }} className="text-white/40 hover:text-white">
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
                                 <div className="grid grid-cols-3 gap-1">
                                   {GEAR_TYPES.map(t => (
                                     <button
@@ -1205,6 +1215,7 @@ export default function App() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       removeGear(gear.id);
+                                      setSelectedGearId(null);
                                     }}
                                     className="w-full px-2 py-1.5 rounded-md text-[10px] font-bold text-red-400 hover:bg-red-500/10 transition-colors uppercase"
                                   >
