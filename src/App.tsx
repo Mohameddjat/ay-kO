@@ -115,6 +115,7 @@ export default function App() {
   const [connectedGears, setConnectedGears] = useState<string[]>([]);
   const [selectedGearId, setSelectedGearId] = useState<string | null>(null);
   const [presets, setPresets] = useState<{ name: string, gears: Gear[] }[]>([]);
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 400 });
   const [credits, setCredits] = useState(() => {
     const saved = localStorage.getItem('gear_race_credits');
     return saved ? parseInt(saved) : 0;
@@ -287,6 +288,21 @@ export default function App() {
     }
   }, [gears]);
 
+  // Responsive Canvas
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const { width, height } = entry.contentRect;
+        setCanvasSize({ width, height });
+      }
+    });
+    
+    observer.observe(canvasRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   // Physics Engine Setup
   useEffect(() => {
     if (gameState !== 'racing') return;
@@ -297,8 +313,8 @@ export default function App() {
       element: canvasRef.current!,
       engine: engine,
       options: {
-        width: 800,
-        height: 400,
+        width: canvasSize.width,
+        height: canvasSize.height,
         wireframes: false,
         background: 'transparent',
       },
@@ -922,10 +938,10 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="max-w-7xl mx-auto p-8 flex flex-col gap-8">
+      <main className="max-w-7xl mx-auto p-4 md:p-8 flex flex-col gap-8">
         {/* Top: Race View */}
         <div className="w-full space-y-6 transition-all duration-500">
-          <div className="bg-[#111111] rounded-2xl border border-white/10 p-6 shadow-2xl relative overflow-hidden h-[650px] flex flex-col">
+          <div className="bg-[#111111] rounded-2xl border border-white/10 p-4 md:p-6 shadow-2xl relative overflow-hidden h-[500px] md:h-[650px] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
@@ -943,7 +959,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex-1 relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a]">
+            <div className="flex-1 relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] min-h-[250px]">
               <div ref={canvasRef} className="w-full h-full relative">
                 {/* Boost Notification */}
                 <AnimatePresence>
@@ -1039,27 +1055,27 @@ export default function App() {
               )}
 
               {/* Dashboard Overlay */}
-              <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none">
-                <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 flex gap-6 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+              <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 right-2 md:right-4 flex justify-between items-end pointer-events-none">
+                <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-2 md:p-4 flex gap-3 md:gap-6 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
                   <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                    <p className="text-3xl font-mono font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+                    <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
+                    <p className="text-xl md:text-3xl font-mono font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
                       {playerBodyRef.current ? (Matter.Vector.magnitude(playerBodyRef.current.velocity) * 5).toFixed(0) : 0}
-                      <span className="text-sm ml-1 opacity-40">km/h</span>
+                      <span className="text-[10px] md:text-sm ml-1 opacity-40">km/h</span>
                     </p>
                   </div>
                   <div className="w-[1px] bg-white/10" />
                   <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                    <p className="text-3xl font-mono font-black text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.3)]">
+                    <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                    <p className="text-xl md:text-3xl font-mono font-black text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.3)]">
                       {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+                <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-2 md:p-4 shadow-[0_0_30px_rgba(0,0,0,0.5)] hidden sm:block">
                   <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-2">Engine Load</p>
-                  <div className="w-40 h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                  <div className="w-24 md:w-40 h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
                     <motion.div 
                       className="h-full bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
                       animate={{ width: `${Math.min(100, (gearRatio * 5))}%` }}
@@ -1137,7 +1153,7 @@ export default function App() {
           </div>
 
           {/* Leaderboard / Stats */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-[#111111] rounded-2xl border border-white/10 p-6 shadow-xl">
               <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Thermal Status</h3>
               <div className="space-y-4">
@@ -1210,12 +1226,12 @@ export default function App() {
                   <div className="text-xs font-mono text-white/40 bg-white/5 px-2 py-1 rounded">12x3 GRID</div>
                 </div>
 
-                <div className="relative flex items-center gap-4">
-                  <EngineVisual className="shrink-0" />
+                <div className="relative flex flex-col md:flex-row items-center gap-4">
+                  <EngineVisual className="shrink-0 md:block hidden" />
                   
-                  <div className="flex-1 relative">
+                  <div className="flex-1 w-full overflow-x-auto pb-4">
                     <div 
-                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[150px] gear-grid-bg relative"
+                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[150px] gear-grid-bg relative min-w-[600px]"
                       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
                     >
                       <div className="absolute inset-0 scanline pointer-events-none rounded-xl overflow-hidden" />
@@ -1303,7 +1319,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <WheelVisual className="shrink-0" />
+                  <WheelVisual className="shrink-0 md:block hidden" />
                 </div>
 
                 <div className="mt-6 grid grid-cols-2 gap-4">
