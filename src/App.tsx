@@ -107,6 +107,7 @@ export default function App() {
   const [gearRatio, setGearRatio] = useState(1);
   const [engineTemp, setEngineTemp] = useState(20);
   const [brakeTemp, setBrakeTemp] = useState(20);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [isAccelerating, setIsAccelerating] = useState(false);
   const [isAutoDrive, setIsAutoDrive] = useState(true);
@@ -319,8 +320,10 @@ export default function App() {
     let animFrame: number;
     let lastTime = performance.now();
     let localDistance = 0;
+    let localSpeed = 0;
     let localObstacles: { id: string, lane: number, z: number, type: string }[] = [];
     let localEngineTemp = 20;
+    let screenShake = 0;
     
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
@@ -335,14 +338,25 @@ export default function App() {
       const { isAccelerating: acc, isAutoDrive: auto, isBraking: brake } = controlsRef.current;
       const activeAcceleration = acc || auto;
       
-      // Speed calculation based on gear ratio
-      const baseSpeed = 500;
+      // Realistic Speed calculation
       const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
-      const currentSpeed = activeAcceleration ? (baseSpeed * gearRatio * efficiency) : (brake ? -200 : -50);
+      const topSpeed = 200 + (gearRatio * 300 * efficiency); // Top speed depends on gear ratio
+      const acceleration = 150 * efficiency;
+      const drag = 0.5; // Air resistance
+      const friction = 20; // Ground friction
+
+      if (activeAcceleration) {
+        localSpeed = Math.min(topSpeed, localSpeed + acceleration * dt);
+      } else if (brake) {
+        localSpeed = Math.max(0, localSpeed - 600 * dt);
+      } else {
+        // Natural deceleration
+        localSpeed = Math.max(0, localSpeed - (friction + localSpeed * drag * 0.01) * dt);
+      }
       
-      const speedMultiplier = Math.max(0, currentSpeed);
-      localDistance += speedMultiplier * dt;
+      localDistance += localSpeed * dt;
       setDistance(localDistance);
+      setCurrentSpeed(localSpeed);
 
       // Lane interpolation
       setPlayerLane(prev => {
@@ -353,7 +367,7 @@ export default function App() {
 
       // Heat management
       if (activeAcceleration) {
-        const heatGen = (gearRatio * 0.5) * (hasUpgrade('super_cooler') ? 0.6 : 1);
+        const heatGen = (gearRatio * 0.5 + localSpeed * 0.01) * (hasUpgrade('super_cooler') ? 0.6 : 1);
         localEngineTemp = Math.min(100, localEngineTemp + heatGen * dt);
       } else {
         localEngineTemp = Math.max(20, localEngineTemp - 5 * dt);
@@ -387,7 +401,9 @@ export default function App() {
         
         // Collision detection
         if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLane) < 0.5) {
-          localEngineTemp += 10;
+          localEngineTemp += 15;
+          localSpeed *= 0.4; // Significant speed penalty
+          screenShake = 20; // Trigger screen shake
           return false;
         }
         
@@ -400,6 +416,13 @@ export default function App() {
       const h = canvasSize.height;
       canvas.width = w;
       canvas.height = h;
+
+      ctx.save();
+      if (screenShake > 0) {
+        ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+        screenShake *= 0.9;
+        if (screenShake < 1) screenShake = 0;
+      }
 
       ctx.clearRect(0, 0, w, h);
 
@@ -466,6 +489,8 @@ export default function App() {
       ctx.fillStyle = '#f43f5e';
       ctx.fillRect(carX - 35, carY - 35, 70, 20); // Roof
       
+      ctx.restore();
+
       // Emit state to socket
       if (socket) {
         socket.emit('update-state', {
@@ -519,25 +544,25 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-rose-500/30">
       {/* Header */}
-      <header className="p-6 border-b border-white/10 flex justify-between items-center bg-[#111111]/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center gap-3">
+      <header className="p-4 md:p-6 border-b border-white/10 flex flex-col sm:flex-row justify-between items-center bg-[#111111]/80 backdrop-blur-md sticky top-0 z-50 gap-4">
+        <div className="flex items-center gap-3 self-start sm:self-center">
           <div className="p-2 bg-rose-600 rounded-lg shadow-lg shadow-rose-600/20">
             <Settings className="w-6 h-6 text-white animate-spin-slow" />
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight">GEAR RACE</h1>
-            <p className="text-xs text-white/40 font-mono uppercase tracking-widest">Hill Climb Multiplayer</p>
+            <p className="text-xs text-white/40 font-mono uppercase tracking-widest">3D Drag Race</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 px-4 py-2 bg-rose-600/20 border border-rose-600/30 rounded-full">
+        <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 md:gap-6 w-full sm:w-auto">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-600/20 border border-rose-600/30 rounded-full">
             <Coins className="w-4 h-4 text-rose-400" />
             <span className="text-sm font-mono font-bold text-rose-400">{credits} CR</span>
           </div>
           <button 
             onClick={() => setGameState(gameState === 'shop' ? 'setup' : 'shop')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold transition-all border ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full font-bold transition-all border text-xs md:text-sm ${
               gameState === 'shop' 
                 ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' 
                 : 'bg-white/5 border-white/10 hover:bg-white/10'
@@ -546,19 +571,13 @@ export default function App() {
             <ShoppingCart className="w-4 h-4" />
             SHOP
           </button>
-          <button 
-            onClick={() => setShowInstructions(true)}
-            className="text-white/40 hover:text-white text-xs font-bold uppercase tracking-widest"
-          >
-            How to play?
-          </button>
-          <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
+          <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 hidden md:flex">
             <Users className="w-4 h-4 text-rose-400" />
             <span className="text-sm font-medium">{Object.keys(otherPlayers).length + 1} Players</span>
           </div>
           <button 
             onClick={() => setIsGarageOpen(!isGarageOpen)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold transition-all border ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full font-bold transition-all border text-xs md:text-sm ${
               isGarageOpen 
                 ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' 
                 : 'bg-white/5 border-white/10 hover:bg-white/10'
@@ -568,26 +587,15 @@ export default function App() {
             GARAGE
           </button>
           <button 
-            onClick={() => setIsAutoDrive(!isAutoDrive)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold transition-all border ${
-              isAutoDrive 
-                ? 'bg-blue-600 border-blue-400 shadow-lg shadow-blue-600/20' 
-                : 'bg-white/5 border-white/10 hover:bg-white/10'
-            }`}
-          >
-            <Zap className={`w-4 h-4 ${isAutoDrive ? 'animate-pulse' : ''}`} />
-            AUTO
-          </button>
-          <button 
             onClick={() => setGameState(gameState === 'setup' ? 'racing' : 'setup')}
-            className={`flex items-center gap-2 px-6 py-2 rounded-full font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-full font-bold transition-all text-xs md:text-sm ${
               gameState === 'setup' 
                 ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20' 
                 : 'bg-white/10 hover:bg-white/20'
             }`}
           >
             {gameState === 'setup' ? <Play className="w-4 h-4 fill-current" /> : <RotateCcw className="w-4 h-4" />}
-            {gameState === 'setup' ? 'START RACE' : 'RESET'}
+            {gameState === 'setup' ? 'START' : 'RESET'}
           </button>
         </div>
       </header>
@@ -603,18 +611,18 @@ export default function App() {
             <motion.div 
               initial={{ y: 20 }}
               animate={{ y: 0 }}
-              className="bg-[#111111] border border-white/10 rounded-3xl p-8 max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="bg-[#111111] border border-white/10 rounded-3xl p-4 md:p-8 max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-y-auto"
             >
-              <div className="flex justify-between items-center mb-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                 <div>
-                  <h2 className="text-3xl font-black text-rose-500 mb-1 uppercase italic tracking-tighter">Performance Shop</h2>
-                  <p className="text-white/40 font-mono text-xs uppercase tracking-widest">Upgrade your mechanical assembly</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-rose-500 mb-1 uppercase italic tracking-tighter">Performance Shop</h2>
+                  <p className="text-white/40 font-mono text-[10px] md:text-xs uppercase tracking-widest">Upgrade your mechanical assembly</p>
                 </div>
-                <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/10">
-                  <Coins className="w-8 h-8 text-rose-500" />
+                <div className="flex items-center gap-3 bg-white/5 p-3 md:p-4 rounded-2xl border border-white/10 w-full sm:w-auto">
+                  <Coins className="w-6 h-6 md:w-8 md:h-8 text-rose-500" />
                   <div>
-                    <p className="text-[10px] text-white/40 uppercase font-bold">Available Credits</p>
-                    <p className="text-2xl font-mono font-black text-white">{credits}</p>
+                    <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-bold">Available Credits</p>
+                    <p className="text-xl md:text-2xl font-mono font-black text-white">{credits}</p>
                   </div>
                 </div>
               </div>
@@ -762,10 +770,10 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="max-w-7xl mx-auto p-4 md:p-8 flex flex-col gap-8">
+      <main className="max-w-7xl mx-auto p-4 md:p-8 flex flex-col gap-6 md:gap-8">
         {/* Top: Race View */}
         <div className="w-full space-y-6 transition-all duration-500">
-          <div className="bg-[#111111] rounded-2xl border border-white/10 p-4 md:p-6 shadow-2xl relative overflow-hidden h-[500px] md:h-[650px] flex flex-col">
+          <div className="bg-[#111111] rounded-2xl border border-white/10 p-3 md:p-6 shadow-2xl relative overflow-hidden h-[400px] md:h-[650px] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
@@ -883,7 +891,7 @@ export default function App() {
                   <div className="text-center">
                     <p className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
                     <p className="text-xl md:text-3xl font-mono font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-                      {(distance / 10).toFixed(0)}
+                      {(currentSpeed / 10).toFixed(0)}
                       <span className="text-[10px] md:text-sm ml-1 opacity-40">km/h</span>
                     </p>
                   </div>
@@ -976,9 +984,9 @@ export default function App() {
           </div>
 
           {/* Leaderboard / Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[#111111] rounded-2xl border border-white/10 p-6 shadow-xl">
-              <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Thermal Status</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <div className="bg-[#111111] rounded-2xl border border-white/10 p-4 md:p-6 shadow-xl">
+              <h3 className="text-[10px] md:text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Thermal Status</h3>
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-xs mb-1">
@@ -1007,8 +1015,8 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-[#111111] rounded-2xl border border-white/10 p-6 shadow-xl">
-              <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Competitors</h3>
+            <div className="bg-[#111111] rounded-2xl border border-white/10 p-4 md:p-6 shadow-xl">
+              <h3 className="text-[10px] md:text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Competitors</h3>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1052,9 +1060,9 @@ export default function App() {
                 <div className="relative flex flex-col md:flex-row items-center gap-4">
                   <EngineVisual className="shrink-0 md:block hidden" />
                   
-                  <div className="flex-1 w-full overflow-x-auto pb-4">
+                  <div className="flex-1 w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
                     <div 
-                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[150px] gear-grid-bg relative min-w-[600px]"
+                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[150px] gear-grid-bg relative min-w-[500px] md:min-w-[600px]"
                       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
                     >
                       <div className="absolute inset-0 scanline pointer-events-none rounded-xl overflow-hidden" />
