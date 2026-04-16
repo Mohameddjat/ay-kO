@@ -529,7 +529,7 @@ export default function App() {
           z: localDistance + 2500,
           type: Math.random() > 0.5 ? 'crate' : 'barrier'
         });
-        nextObstacleZRef.current = localDistance + 1500 + Math.random() * 1000;
+        nextObstacleZRef.current = localDistance + 600 + Math.random() * 800;
       }
 
       // Filter and collision
@@ -591,7 +591,7 @@ export default function App() {
       ctx.clearRect(0, 0, w, h);
 
       // Draw Road
-      const horizon = h * 0.35; // Higher horizon for better view of the track
+      const horizon = h * 0.45; // Higher horizon for a more top-down view
       ctx.fillStyle = '#111';
       ctx.beginPath();
       ctx.moveTo(w * 0.48, horizon);
@@ -648,9 +648,9 @@ export default function App() {
       });
 
       // Draw Player Car (Improved 3D-ish model and positioning)
-      const carScale = 0.9;
+      const carScale = 0.8;
       const carX = w/2 + (localPlayerLane * 250 * carScale);
-      const carY = h - 80; // Lower car for better view of obstacles ahead
+      const carY = h - 50; // Lower car at the bottom of the screen for maximum visibility
       
       // Car Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
