@@ -529,7 +529,7 @@ export default function App() {
           z: localDistance + 2500,
           type: Math.random() > 0.5 ? 'crate' : 'barrier'
         });
-        nextObstacleZRef.current = localDistance + 600 + Math.random() * 800;
+        nextObstacleZRef.current = localDistance + 400 + Math.random() * 600;
       }
 
       // Filter and collision
@@ -581,6 +581,15 @@ export default function App() {
       canvas.width = w;
       canvas.height = h;
 
+      const horizon = h * 0.45;
+      const LANE_WIDTH_BOTTOM = 350;
+      const LANE_WIDTH_HORIZON = 15;
+
+      const getX = (lane: number, s: number) => {
+        const spread = LANE_WIDTH_HORIZON + (LANE_WIDTH_BOTTOM - LANE_WIDTH_HORIZON) * s;
+        return w/2 + (lane * spread);
+      };
+
       ctx.save();
       if (screenShake > 0) {
         ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
@@ -590,26 +599,55 @@ export default function App() {
 
       ctx.clearRect(0, 0, w, h);
 
+      // Draw Grass
+      ctx.fillStyle = '#064e3b';
+      ctx.fillRect(0, horizon, w, h - horizon);
+
       // Draw Road
-      const horizon = h * 0.45; // Higher horizon for a more top-down view
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = '#1a1a1a';
       ctx.beginPath();
-      ctx.moveTo(w * 0.48, horizon);
-      ctx.lineTo(w * 0.52, horizon);
-      ctx.lineTo(w * 1.5, h);
-      ctx.lineTo(-w * 0.5, h);
+      ctx.moveTo(getX(-1.8, 0), horizon);
+      ctx.lineTo(getX(1.8, 0), horizon);
+      ctx.lineTo(getX(1.8, 1), h);
+      ctx.lineTo(getX(-1.8, 1), h);
       ctx.fill();
 
+      // Rumble Strips (Side of road)
+      const stripCount = 20;
+      for (let i = 0; i < stripCount; i++) {
+        const zPos = ((localDistance / 100) + i) % stripCount;
+        const s1 = 1 - (zPos / stripCount);
+        const s2 = 1 - ((zPos + 0.5) / stripCount);
+        
+        ctx.fillStyle = Math.floor(zPos) % 2 === 0 ? '#fff' : '#e11d48';
+        
+        // Left Strip
+        ctx.beginPath();
+        ctx.moveTo(getX(-1.8, s1), horizon + (h - horizon) * s1);
+        ctx.lineTo(getX(-1.6, s1), horizon + (h - horizon) * s1);
+        ctx.lineTo(getX(-1.6, s2), horizon + (h - horizon) * s2);
+        ctx.lineTo(getX(-1.8, s2), horizon + (h - horizon) * s2);
+        ctx.fill();
+
+        // Right Strip
+        ctx.beginPath();
+        ctx.moveTo(getX(1.6, s1), horizon + (h - horizon) * s1);
+        ctx.lineTo(getX(1.8, s1), horizon + (h - horizon) * s1);
+        ctx.lineTo(getX(1.8, s2), horizon + (h - horizon) * s2);
+        ctx.lineTo(getX(1.6, s2), horizon + (h - horizon) * s2);
+        ctx.fill();
+      }
+
       // Lane Lines
-      ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : '#e11d48';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([30, 30]);
+      ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([20, 40]);
       ctx.lineDashOffset = -localDistance % 60;
       
-      for (let i = -1.5; i <= 1.5; i += 1) {
+      for (let i = -0.5; i <= 0.5; i += 1) {
         ctx.beginPath();
-        ctx.moveTo(w/2 + (i * 15), horizon);
-        ctx.lineTo(w/2 + (i * 800), h);
+        ctx.moveTo(getX(i, 0), horizon);
+        ctx.lineTo(getX(i, 1), h);
         ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -620,7 +658,7 @@ export default function App() {
         if (relZ < 0 || relZ > 2000) return;
 
         const scale = 400 / (relZ + 400);
-        const x = w/2 + (obs.lane * 250 * scale);
+        const x = getX(obs.lane, scale);
         const y = horizon + (h - horizon) * scale;
         const size = 80 * scale;
 
@@ -639,7 +677,7 @@ export default function App() {
         if (relZ < -100 || relZ > 2000) return;
 
         const scale = 400 / (relZ + 400);
-        const x = w/2 + (p.x * 250 * scale);
+        const x = getX(p.x, scale);
         const y = horizon + (h - horizon) * scale;
         const size = 80 * scale;
 
@@ -649,8 +687,8 @@ export default function App() {
 
       // Draw Player Car (Improved 3D-ish model and positioning)
       const carScale = 0.8;
-      const carX = w/2 + (localPlayerLane * 250 * carScale);
-      const carY = h - 50; // Lower car at the bottom of the screen for maximum visibility
+      const carX = getX(localPlayerLane, 0.95);
+      const carY = h - 50; 
       
       // Car Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
