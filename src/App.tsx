@@ -582,8 +582,8 @@ export default function App() {
       canvas.height = h;
 
       const horizon = h * 0.45;
-      const LANE_WIDTH_BOTTOM = 350;
-      const LANE_WIDTH_HORIZON = 15;
+      const LANE_WIDTH_BOTTOM = 300; // Reduced from 350 for narrower road
+      const LANE_WIDTH_HORIZON = 10; // Reduced from 15
 
       const getX = (lane: number, s: number) => {
         const spread = LANE_WIDTH_HORIZON + (LANE_WIDTH_BOTTOM - LANE_WIDTH_HORIZON) * s;
@@ -655,12 +655,12 @@ export default function App() {
       // Draw Obstacles
       localObstacles.forEach(obs => {
         const relZ = obs.z - localDistance;
-        if (relZ < 0 || relZ > 2000) return;
+        if (relZ < 0 || relZ > 2500) return; // Increased view distance
 
-        const scale = 400 / (relZ + 400);
+        const scale = 500 / (relZ + 500); // Changed perspective factor for 'further' feel
         const x = getX(obs.lane, scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 80 * scale;
+        const size = 60 * scale; // Reduced obstacle size
 
         ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
         if (localBoostTimer > 0) {
@@ -674,26 +674,26 @@ export default function App() {
       // Draw Other Players
       Object.values(otherPlayers).forEach((p: any) => {
         const relZ = p.y - localDistance;
-        if (relZ < -100 || relZ > 2000) return;
+        if (relZ < -100 || relZ > 2500) return;
 
-        const scale = 400 / (relZ + 400);
+        const scale = 500 / (relZ + 500);
         const x = getX(p.x, scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 80 * scale;
+        const size = 60 * scale;
 
         ctx.fillStyle = 'rgba(59, 130, 246, 0.6)';
         ctx.fillRect(x - size/2, y - size, size, size);
       });
 
       // Draw Player Car (Improved 3D-ish model and positioning)
-      const carScale = 0.8;
+      const carScale = 0.6; // Reduced from 0.8
       const carX = getX(localPlayerLane, 0.95);
-      const carY = h - 50; 
+      const carY = h - 40; 
       
       // Car Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath();
-      ctx.ellipse(carX, carY + 10, 45, 15, 0, 0, Math.PI * 2);
+      ctx.ellipse(carX, carY + 8, 35, 12, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // Car Body
@@ -701,25 +701,25 @@ export default function App() {
       ctx.shadowBlur = localBoostTimer > 0 ? 30 : 0;
       ctx.shadowColor = '#fbbf24';
       ctx.beginPath();
-      ctx.roundRect(carX - 40, carY - 20, 80, 40, 8);
+      ctx.roundRect(carX - 30, carY - 15, 60, 30, 6);
       ctx.fill();
       
       // Car Roof
       ctx.fillStyle = localBoostTimer > 0 ? '#fef3c7' : '#f43f5e';
       ctx.beginPath();
-      ctx.roundRect(carX - 30, carY - 35, 60, 25, 5);
+      ctx.roundRect(carX - 22, carY - 26, 44, 18, 4);
       ctx.fill();
 
       // Windows
       ctx.fillStyle = '#1e293b';
-      ctx.fillRect(carX - 25, carY - 32, 50, 15);
+      ctx.fillRect(carX - 18, carY - 24, 36, 11);
       
       // Tail Lights
       ctx.fillStyle = isBraking ? '#ff0000' : '#991b1b';
       ctx.shadowBlur = isBraking ? 15 : 0;
       ctx.shadowColor = '#ff0000';
-      ctx.fillRect(carX - 35, carY - 5, 15, 8);
-      ctx.fillRect(carX + 20, carY - 5, 15, 8);
+      ctx.fillRect(carX - 26, carY - 4, 11, 6);
+      ctx.fillRect(carX + 15, carY - 4, 11, 6);
       ctx.shadowBlur = 0;
       
       // Draw Near Miss Text
@@ -1074,15 +1074,18 @@ export default function App() {
                 <AnimatePresence>
                   {boostTime > 0 && (
                     <motion.div 
-                      initial={{ opacity: 0, x: -20, scale: 0.8 }}
-                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      initial={{ opacity: 0, y: -20, scale: 0.8 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, scale: 1.2 }}
-                      className="absolute top-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+                      className="absolute top-24 right-4 z-50 pointer-events-none"
                     >
-                      <div className="bg-rose-600 text-white px-6 py-2 rounded-full font-black italic text-2xl shadow-[0_0_30px_rgba(244,63,94,0.6)] border-2 border-white/20 flex items-center gap-3">
-                        <Flame className="w-8 h-8 animate-pulse" />
-                        {lastBoostType} BOOST!
-                        <span className="text-sm font-mono ml-2 opacity-60">{boostTime.toFixed(1)}s</span>
+                      <div className="bg-rose-600/90 backdrop-blur-md text-white px-4 py-2 rounded-2xl font-black italic text-sm shadow-xl border border-white/20 flex items-center gap-2">
+                        <Flame className="w-4 h-4 animate-pulse" />
+                        <div className="flex flex-col">
+                          <span className="text-[8px] opacity-60 uppercase tracking-widest">{lastBoostType}</span>
+                          <span className="leading-none">BOOST ACTIVE</span>
+                        </div>
+                        <span className="text-lg font-mono ml-2 text-yellow-400">{boostTime.toFixed(1)}s</span>
                       </div>
                     </motion.div>
                   )}
