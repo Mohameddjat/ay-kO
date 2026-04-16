@@ -581,9 +581,9 @@ export default function App() {
       canvas.width = w;
       canvas.height = h;
 
-      const horizon = h * 0.45;
-      const LANE_WIDTH_BOTTOM = 300; // Reduced from 350 for narrower road
-      const LANE_WIDTH_HORIZON = 10; // Reduced from 15
+      const horizon = h * 0.4; // Lower horizon for a more "distant" feel
+      const LANE_WIDTH_BOTTOM = w * 0.4; // Responsive width (40% of canvas)
+      const LANE_WIDTH_HORIZON = w * 0.02; // 2% of canvas at horizon
 
       const getX = (lane: number, s: number) => {
         const spread = LANE_WIDTH_HORIZON + (LANE_WIDTH_BOTTOM - LANE_WIDTH_HORIZON) * s;
@@ -655,12 +655,12 @@ export default function App() {
       // Draw Obstacles
       localObstacles.forEach(obs => {
         const relZ = obs.z - localDistance;
-        if (relZ < 0 || relZ > 2500) return; // Increased view distance
+        if (relZ < 0 || relZ > 3000) return; // Increased view distance
 
-        const scale = 500 / (relZ + 500); // Changed perspective factor for 'further' feel
+        const scale = 800 / (relZ + 800); // Increased perspective constant for "further" feel
         const x = getX(obs.lane, scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 60 * scale; // Reduced obstacle size
+        const size = 60 * scale; 
 
         ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
         if (localBoostTimer > 0) {
@@ -674,9 +674,9 @@ export default function App() {
       // Draw Other Players
       Object.values(otherPlayers).forEach((p: any) => {
         const relZ = p.y - localDistance;
-        if (relZ < -100 || relZ > 2500) return;
+        if (relZ < -100 || relZ > 3000) return;
 
-        const scale = 500 / (relZ + 500);
+        const scale = 800 / (relZ + 800);
         const x = getX(p.x, scale);
         const y = horizon + (h - horizon) * scale;
         const size = 60 * scale;
@@ -686,9 +686,9 @@ export default function App() {
       });
 
       // Draw Player Car (Improved 3D-ish model and positioning)
-      const carScale = 0.6; // Reduced from 0.8
-      const carX = getX(localPlayerLane, 0.95);
-      const carY = h - 40; 
+      const carScale = 0.5; // Even smaller for better perspective
+      const carX = getX(localPlayerLane, 0.9); // Positioned slightly further up for better view
+      const carY = h - 30; 
       
       // Car Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
