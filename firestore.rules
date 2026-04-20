@@ -39,12 +39,13 @@ service cloud.firestore {
           // Allow updates if you are part of the room (for simplicity in this prototype)
           exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid))
         );
+      allow delete: if isSignedIn();
 
       match /players/{playerId} {
         allow read: if true;
         allow create: if isOwner(playerId) && isValidPlayer(request.resource.data);
         allow update: if isOwner(playerId) && isValidPlayer(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['x', 'y', 'angle', 'progress', 'temp', 'brakeTemp', 'gearRatio', 'isExploded', 'lastUpdate']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasAny(['x', 'y', 'angle', 'progress', 'temp', 'brakeTemp', 'gearRatio', 'isExploded', 'lastUpdate', 'isReady']);
         allow delete: if isOwner(playerId);
       }
     }

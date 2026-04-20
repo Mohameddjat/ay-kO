@@ -425,16 +425,17 @@ export default function App() {
     if (gameMode !== 'multi' || multiRoomConfirmed) return;
     const roomsQuery = query(
       collection(db, 'rooms'),
-      where('status', '==', 'waiting'),
-      limit(20)
+      orderBy('createdAt', 'desc'),
+      limit(50)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
-      const rooms = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        createdAt: doc.data().createdAt?.toMillis() || Date.now() 
-      }));
-      // Sort locally to avoid needing complex composite indexes
-      rooms.sort((a, b) => b.createdAt - a.createdAt);
+      const oneHourAgo = Date.now() - 3600000;
+      const rooms = snapshot.docs
+        .filter(doc => doc.data().status === 'waiting' && (doc.data().createdAt?.toMillis() || Date.now()) > oneHourAgo)
+        .map(doc => ({ 
+          id: doc.id, 
+          createdAt: doc.data().createdAt?.toMillis() || Date.now() 
+        }));
       setAvailableRooms(rooms);
     });
     return () => unsubscribe();
@@ -523,7 +524,13 @@ export default function App() {
 
     // Cleanup my player entry on disconnect/leave
     const handleUnload = () => {
-      deleteDoc(doc(db, 'rooms', roomId, 'players', myUid));
+      deleteDoc(doc(db, 'rooms', roomId, 'players', myUid)).then(() => {
+        getDocs(collection(db, 'rooms', roomId, 'players')).then(snap => {
+          if (snap.empty) {
+            deleteDoc(doc(db, 'rooms', roomId)).catch(console.error);
+          }
+        }).catch(console.error);
+      }).catch(console.error);
     };
     window.addEventListener('beforeunload', handleUnload);
 
