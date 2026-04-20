@@ -228,6 +228,7 @@ export default function App() {
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
   const [joinIdInput, setJoinIdInput] = useState('');
   const [isGarageOpen, setIsGarageOpen] = useState(false);
+  const [isMissionsOpen, setIsMissionsOpen] = useState(false);
   const [gearRatio, setGearRatio] = useState(1);
   const [engineTemp, setEngineTemp] = useState(20);
   const [brakeTemp, setBrakeTemp] = useState(20);
@@ -266,6 +267,83 @@ export default function App() {
 
   const [boostTime, setBoostTime] = useState(0);
   const [lastBoostType, setLastBoostType] = useState<string | null>(null);
+
+  // Daily Missions State
+  const [missions, setMissions] = useState<{
+    id: string;
+    label: string;
+    goal: number;
+    current: number;
+    reward: number;
+    type: 'speed' | 'distance' | 'win' | 'temp';
+    completed: boolean;
+    claimed: boolean;
+  }[]>(() => {
+    const saved = localStorage.getItem('gear_race_missions');
+    const lastDate = localStorage.getItem('gear_race_missions_date');
+    const today = new Date().toDateString();
+
+    if (saved && lastDate === today) {
+      return JSON.parse(saved);
+    }
+    return [];
+  });
+
+  const [missionDate, setMissionDate] = useState(() => localStorage.getItem('gear_race_missions_date') || '');
+
+  // Mission Generation
+  useEffect(() => {
+    const today = new Date().toDateString();
+    if (missionDate !== today) {
+      const dailyPool = [
+        { id: 'm1', label: 'Hit 250 KM/H', goal: 250, reward: 100, type: 'speed' },
+        { id: 'm2', label: 'Travel 50,000 KM', goal: 50000, reward: 150, type: 'distance' },
+        { id: 'm3', label: 'Win a Single Race', goal: 1, reward: 200, type: 'win' },
+        { id: 'm4', label: 'Finish with Engine < 50°C', goal: 50, reward: 300, type: 'temp' },
+        { id: 'm5', label: 'Hit 400 KM/H', goal: 400, reward: 250, type: 'speed' },
+        { id: 'm6', label: 'Total Distance 100k', goal: 100000, reward: 500, type: 'distance' },
+      ];
+      
+      // Pick 3 random missions
+      const shuffled = dailyPool.sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, 3).map(m => ({ ...m, current: 0, completed: false, claimed: false }));
+      
+      setMissions(selected as any);
+      setMissionDate(today);
+      localStorage.setItem('gear_race_missions', JSON.stringify(selected));
+      localStorage.setItem('gear_race_missions_date', today);
+    }
+  }, [missionDate]);
+
+  useEffect(() => {
+    localStorage.setItem('gear_race_missions', JSON.stringify(missions));
+  }, [missions]);
+
+  const updateMissionProgress = (type: string, value: number, isFinished = false) => {
+    setMissions(prev => prev.map(m => {
+      if (m.type === type && !m.completed) {
+        let newCurrent = m.current;
+        if (type === 'distance') newCurrent += value;
+        else if (type === 'speed') newCurrent = Math.max(m.current, value);
+        else if (type === 'win' && isFinished) newCurrent += value;
+        else if (type === 'temp' && isFinished && value <= m.goal) newCurrent = 1;
+        
+        const completed = newCurrent >= m.goal;
+        return { ...m, current: newCurrent, completed };
+      }
+      return m;
+    }));
+  };
+
+  const claimMissionReward = (id: string) => {
+    setMissions(prev => prev.map(m => {
+      if (m.id === id && m.completed && !m.claimed) {
+        setCredits(c => c + m.reward);
+        return { ...m, claimed: true };
+      }
+      return m;
+    }));
+  };
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Matter.Engine | null>(null);
@@ -570,6 +648,10 @@ export default function App() {
       localDistance += localSpeed * dt;
       setDistance(localDistance);
       setCurrentSpeed(localSpeed);
+      
+      // Update missions
+      updateMissionProgress('speed', localSpeed / 10);
+      updateMissionProgress('distance', localSpeed * dt);
 
       // Lane interpolation
       const diff = targetLaneRef.current - localPlayerLane;
@@ -607,6 +689,13 @@ export default function App() {
 
       if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
+        
+        // Rewards and Missions
+        const reward = gameMode === 'multi' ? 300 : 100;
+        setCredits(prev => prev + reward);
+        updateMissionProgress('win', 1, true);
+        updateMissionProgress('temp', localEngineTemp, true);
+
         if (gameMode === 'multi' && auth.currentUser) {
           updateDoc(doc(db, 'rooms', roomId), {
             status: 'finished',
@@ -1122,18 +1211,18 @@ export default function App() {
       <main className="h-screen w-full flex flex-col relative overflow-hidden bg-gradient-to-b from-blue-950 via-blue-900 to-[#111]">
         {/* Race View - Full Screen Container */}
         <div className="flex-1 relative overflow-hidden flex flex-col">
-          <div className="flex-1 relative bg-[#111111] overflow-hidden flex flex-col">
+          <div className="flex-1 relative bg-transparent overflow-hidden flex flex-col">
             {/* Header Overlay */}
-            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-40 bg-gradient-to-b from-black/80 to-transparent">
+            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-40">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <Trophy className="w-5 h-5 text-yellow-500" />
-                  <h2 className="text-sm font-black uppercase tracking-tighter italic">Live Race</h2>
+                  <h2 className="text-sm font-black uppercase tracking-tighter italic text-white/60">Live Race</h2>
                 </div>
                 
                 {/* HUD: Comp Stats - Moved to Top Left */}
                 <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex">
-                  <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 w-48 shadow-xl">
+                  <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-2 w-48 shadow-lg">
                     <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-2 flex items-center justify-between">
                       <span>Competitors</span>
                       <Users className="w-2 h-2 text-rose-500" />
@@ -1194,8 +1283,8 @@ export default function App() {
 
             {/* Dashboard Overlay - Bottom Anchored */}
             <div className="absolute bottom-32 left-4 right-4 flex justify-between items-end pointer-events-none z-30">
-              <div className="flex flex-col gap-4">
-                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex gap-6 shadow-2xl">
+              <div className="flex flex-col gap-6">
+                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-3 flex gap-12 shadow-xl">
                   <div className="text-center">
                     <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
                     <p className="text-5xl font-mono font-black text-rose-500 italic">
@@ -1223,7 +1312,7 @@ export default function App() {
                 </div>
 
                 {/* Thermal HUD - Circular Gauges */}
-                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex gap-4 shadow-xl pointer-events-none">
+                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex gap-10 shadow-xl pointer-events-none">
                   <div className="relative flex flex-col items-center">
                     <div className="relative w-16 h-16 flex items-center justify-center">
                       <svg className="w-full h-full -rotate-90">
@@ -1370,6 +1459,14 @@ export default function App() {
                 <div className="max-w-xl w-full flex flex-col gap-8 items-center text-center">
                   {!gameMode ? (
                     <>
+                      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl">
+                        <Coins className="w-5 h-5 text-yellow-500 animate-pulse" />
+                        <div className="flex flex-col items-start leading-none">
+                          <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Available Credits</span>
+                          <span className="text-xl font-mono font-black text-white">{credits.toLocaleString()}</span>
+                        </div>
+                      </div>
+
                       <div className="space-y-2">
                         <h2 className="text-4xl font-black italic tracking-tighter text-white">CHOOSE OPERATIONAL MODE</h2>
                         <p className="text-white/40 uppercase tracking-widest text-xs font-bold">Select your mission profile</p>
@@ -1406,6 +1503,32 @@ export default function App() {
                           </div>
                         </motion.button>
                       </div>
+
+                      {/* Missions Dashboard Quick View */}
+                      <motion.button
+                        onClick={() => setIsMissionsOpen(true)}
+                        className="w-full mt-4 p-4 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20 rounded-2xl flex items-center justify-between group hover:bg-yellow-500/20 transition-all"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="bg-yellow-500/20 p-2 rounded-lg">
+                            <Trophy className="w-5 h-5 text-yellow-500" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-xs font-black text-yellow-500 uppercase">Daily Missions</p>
+                            <p className="text-[10px] text-white/40 uppercase font-bold">
+                              {missions.filter(m => m.completed && !m.claimed).length} Rewards Ready to Claim
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <div className="flex -space-x-1">
+                              {missions.map((m, i) => (
+                                <div key={i} className={`w-2 h-2 rounded-full border border-black ${m.completed ? 'bg-yellow-500' : 'bg-white/10'}`} />
+                              ))}
+                           </div>
+                           <ChevronRight className="w-4 h-4 text-white/40 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                      </motion.button>
                     </>
                   ) : gameMode === 'multi' && !multiRoomConfirmed ? (
                     <>
@@ -1704,6 +1827,79 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+
+        {/* Missions Overlay */}
+        <AnimatePresence>
+          {isMissionsOpen && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6"
+              onClick={(e) => e.target === e.currentTarget && setIsMissionsOpen(false)}
+            >
+              <div className="max-w-md w-full bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl">
+                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-yellow-500/10 to-transparent">
+                  <div className="flex items-center gap-3">
+                    <Trophy className="w-6 h-6 text-yellow-500" />
+                    <h2 className="text-2xl font-black italic text-white uppercase tracking-tighter">Daily Briefing</h2>
+                  </div>
+                  <button onClick={() => setIsMissionsOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors text-white/40">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                
+                <div className="p-6 space-y-4">
+                  {missions.map((mission) => (
+                    <div key={mission.id} className={`p-4 rounded-2xl border transition-all ${mission.claimed ? 'bg-white/5 border-white/5 opacity-50' : mission.completed ? 'bg-yellow-500/10 border-yellow-500/30 shadow-lg shadow-yellow-500/5' : 'bg-white/5 border-white/10'}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-black text-white uppercase italic text-sm">{mission.label}</h4>
+                          <div className="flex items-center gap-1 mt-1">
+                            <Coins className="w-3 h-3 text-yellow-500" />
+                            <span className="text-[10px] font-black text-yellow-500 uppercase">{mission.reward} Credits</span>
+                          </div>
+                        </div>
+                        {mission.claimed ? (
+                          <div className="bg-green-500/20 text-green-400 p-1 rounded">
+                            <Check className="w-4 h-4" />
+                          </div>
+                        ) : mission.completed && (
+                          <button 
+                            onClick={() => claimMissionReward(mission.id)}
+                            className="bg-yellow-500 text-black px-3 py-1 rounded-lg text-[10px] font-black uppercase hover:bg-yellow-400 transition-colors"
+                          >
+                            Claim
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[8px] font-black uppercase text-white/40">
+                          <span>Progress</span>
+                          <span>{mission.type === 'speed' ? `${Math.floor(mission.current)} / ${mission.goal} KM/H` : mission.type === 'temp' ? `${mission.current === 1 ? 'LOCKED' : 'FAIL'}` : `${Math.floor(mission.current)} / ${mission.goal}`}</span>
+                        </div>
+                        <div className="h-1.5 bg-black rounded-full overflow-hidden">
+                          <motion.div 
+                            className="h-full bg-yellow-500"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, (mission.current / mission.goal) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="p-6 bg-white/5 text-center">
+                  <p className="text-[10px] text-white/40 uppercase font-black italic tracking-widest">
+                    Briefing expires in {24 - new Date().getHours()} hours
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Garage Overlay */}
         <AnimatePresence>
