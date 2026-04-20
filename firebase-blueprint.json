@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Game Room",
+      "description": "A multiplayer racing session",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["waiting", "racing", "finished"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "winnerId": { "type": "string" },
+        "winReason": { "type": "string" }
+      },
+      "required": ["status"]
+    },
+    "Player": {
+      "title": "Player State",
+      "description": "Individual player telemetry and position",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "angle": { "type": "number" },
+        "progress": { "type": "number" },
+        "temp": { "type": "number" },
+        "brakeTemp": { "type": "number" },
+        "gearRatio": { "type": "number" },
+        "isExploded": { "type": "boolean" },
+        "isReady": { "type": "boolean" },
+        "lastUpdate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "progress"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Main room state"
+    },
+    "/rooms/{roomId}/players/{playerId}": {
+      "schema": "Player",
+      "description": "Player specific data within a room"
+    }
+  }
+}

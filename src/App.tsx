@@ -1,7 +1,19 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Matter from 'matter-js';
-import { io, Socket } from 'socket.io-client';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  deleteDoc, 
+  getDoc,
+  serverTimestamp,
+  increment
+} from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from './lib/firebase';
 import { 
   Settings, 
   Play, 
@@ -182,10 +194,9 @@ const WheelVisual = ({ className }: { className?: string }) => (
 );
 
 export default function App() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [roomId, setRoomId] = useState('main-race');
   const [socketId, setSocketId] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
-  const [roomId, setRoomId] = useState('main-race');
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [otherPlayers, setOtherPlayers] = useState<Record<string, PlayerState>>({});
   const [gears, setGears] = useState<Gear[]>(() => {
@@ -325,85 +336,93 @@ export default function App() {
     };
   }, [gameState]);
 
-  // Initialize Socket
+  // Firebase Sync
   useEffect(() => {
-    if (gameMode !== 'multi') {
-      if (socket) socket.disconnect();
-      setSocket(null);
-      setSocketId(null);
-      setConnectionStatus('disconnected');
-      setOtherPlayers({});
-      return;
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setSocketId(user.uid);
+      }
+    });
+
+    if (gameMode !== 'multi' || !auth.currentUser) {
+      if (gameMode === 'multi') setConnectionStatus('connecting');
+      else {
+        setConnectionStatus('disconnected');
+        setOtherPlayers({});
+      }
+      return () => unsubAuth();
     }
 
-    console.log(`Connecting to socket... Room: ${roomId}`);
+    const myUid = auth.currentUser.uid;
+    setSocketId(myUid);
     setConnectionStatus('connecting');
-    
-    // Explicitly connect to origin
-    const newSocket = io(window.location.origin);
-    setSocket(newSocket);
 
-    newSocket.on('connect', () => {
-      console.log(`Socket connected: ${newSocket.id}`);
+    const roomRef = doc(db, 'rooms', roomId);
+    const playersRef = collection(db, 'rooms', roomId, 'players');
+
+    // Ensure room exists
+    const initRoom = async () => {
+      const snap = await getDoc(roomRef);
+      if (!snap.exists()) {
+        await setDoc(roomRef, {
+          status: 'waiting',
+          createdAt: serverTimestamp()
+        });
+      }
       setConnectionStatus('connected');
-      newSocket.emit('join-room', roomId);
-    });
+    };
+    initRoom();
 
-    newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      setConnectionStatus('disconnected');
-    });
-
-    newSocket.on('init-success', ({ id }) => {
-      console.log(`Initialized with ID: ${id}`);
-      setSocketId(id);
-    });
-
-    newSocket.on('room-state', (room: GameRoom) => {
-      console.log('Received room state:', room);
-      // Use the ID from init-success or current socket instance
-      const currentId = newSocket.id;
-      if (!currentId) return;
-
-      const myState = room.players[currentId];
-      if (myState) setPlayerState(myState);
+    // Listen to Room Status
+    const unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
       
-      const others = { ...room.players };
-      delete others[currentId];
-      setOtherPlayers(others);
+      if (data.status === 'racing' && gameState === 'setup') {
+        setIsWaiting(false);
+        setGameState('racing');
+        setMultiplayerWinner(null);
+      } else if (data.status === 'finished') {
+        setGameState('finished');
+        if (data.winnerId) {
+          setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
+        }
+      }
     });
 
-    newSocket.on('player-updated', (player: PlayerState) => {
-      // Don't update self from server to avoid jitter
-      if (player.id === newSocket.id) return;
-      setOtherPlayers(prev => ({ ...prev, [player.id]: player }));
-    });
-
-    newSocket.on('start-race', () => {
-      console.log('Race starting via socket signal');
-      setIsWaiting(false);
-      setGameState('racing');
-      setMultiplayerWinner(null);
-    });
-
-    newSocket.on('game-over', ({ winnerId, reason }: { winnerId: string, reason: string }) => {
-      setGameState('finished');
-      setMultiplayerWinner({ id: winnerId, reason });
-    });
-
-    newSocket.on('player-left', (id: string) => {
-      setOtherPlayers(prev => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
+    // Listen to Players
+    const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
+      const players: Record<string, PlayerState> = {};
+      snapshot.forEach((d) => {
+        if (d.id !== myUid) {
+          players[d.id] = d.data() as PlayerState;
+        }
       });
+      setOtherPlayers(players);
+
+      // Auto-start logic: ALL players in room must be ready
+      const allPlayers = snapshot.docs.map(d => d.data());
+      const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
+      
+      if (allReady && gameState === 'setup') {
+        updateDoc(roomRef, { status: 'racing' }).catch(console.error);
+      }
     });
+
+    // Cleanup my player entry on disconnect/leave
+    const handleUnload = () => {
+      deleteDoc(doc(db, 'rooms', roomId, 'players', myUid));
+    };
+    window.addEventListener('beforeunload', handleUnload);
 
     return () => {
-      console.log('Cleaning up socket...');
-      newSocket.disconnect();
+      unsubAuth();
+      unsubscribeRoom();
+      unsubscribePlayers();
+      window.removeEventListener('beforeunload', handleUnload);
+      handleUnload();
     };
-  }, [roomId, gameMode]);
+  }, [roomId, gameMode, auth.currentUser]);
 
   // Gear Connectivity Logic (BFS)
   useEffect(() => {
@@ -569,16 +588,25 @@ export default function App() {
 
       if (localEngineTemp >= 90) {
         setGameState('exploded');
-        if (gameMode === 'multi' && socket) {
-          socket.emit('player-lost', { roomId });
+        if (gameMode === 'multi' && auth.currentUser) {
+          const otherId = Object.keys(otherPlayers)[0];
+          updateDoc(doc(db, 'rooms', roomId), {
+            status: 'finished',
+            winnerId: otherId || 'SYSTEM',
+            winReason: 'opponent exploded'
+          });
         }
         return;
       }
 
       if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
-        if (gameMode === 'multi' && socket) {
-          socket.emit('player-finished', { roomId });
+        if (gameMode === 'multi' && auth.currentUser) {
+          updateDoc(doc(db, 'rooms', roomId), {
+            status: 'finished',
+            winnerId: auth.currentUser.uid,
+            winReason: 'crossed finish line'
+          });
         }
         return;
       }
@@ -814,16 +842,20 @@ export default function App() {
 
       ctx.restore();
 
-      // Emit state to socket
-      if (socket) {
-        socket.emit('update-state', {
-          roomId,
-          state: {
-            x: playerLane,
-            y: localDistance,
-            progress: localDistance / TRACK_LENGTH
-          }
-        });
+      // Emit state to Firebase
+      if (gameMode === 'multi' && auth.currentUser) {
+        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+        setDoc(playerRef, {
+          id: auth.currentUser.uid,
+          x: playerLane,
+          y: localDistance,
+          progress: localDistance / TRACK_LENGTH,
+          temp: localEngineTemp,
+          brakeTemp: brakeTemp,
+          gearRatio: gearRatio,
+          isExploded: gameState === 'exploded',
+          lastUpdate: serverTimestamp()
+        }, { merge: true });
       }
 
       if (localDistance >= TRACK_LENGTH) {
@@ -1070,7 +1102,8 @@ export default function App() {
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
-                      if (socket) socket.disconnect();
+                      setDistance(0);
+                      setCurrentSpeed(0);
                     }}
                     className="p-2 rounded-full bg-red-600/20 border border-red-500/40 hover:bg-red-600 transition-all text-white group"
                   >
@@ -1406,6 +1439,20 @@ export default function App() {
                           onClick={() => {
                             if (gameMode === 'multi') {
                               setIsWaiting(true);
+                              if (auth.currentUser) {
+                                const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                                setDoc(playerRef, {
+                                  id: auth.currentUser.uid,
+                                  isReady: true,
+                                  progress: 0,
+                                  x: 0,
+                                  y: 0,
+                                  temp: 20,
+                                  brakeTemp: 20,
+                                  isExploded: false,
+                                  lastUpdate: serverTimestamp()
+                                }, { merge: true });
+                              }
                             } else {
                               setGameState('racing');
                             }
@@ -1539,7 +1586,8 @@ export default function App() {
                       setEngineTemp(20);
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
-                      if (socket) socket.disconnect();
+                      setDistance(0);
+                      setCurrentSpeed(0);
                     }}
                     className="relative z-10 bg-white text-red-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-red-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
@@ -1561,10 +1609,10 @@ export default function App() {
                   {gameMode === 'multi' && multiplayerWinner ? (
                     <>
                       <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">
-                        {multiplayerWinner.id === socket?.id ? 'VICTORY SECURED' : 'DEFEAT ACKNOWLEDGED'}
+                        {multiplayerWinner.id === auth.currentUser?.uid ? 'VICTORY SECURED' : 'DEFEAT ACKNOWLEDGED'}
                       </h3>
                       <p className="text-green-200/60 mb-10 max-w-sm text-lg italic leading-tight">
-                        {multiplayerWinner.id === socket?.id 
+                        {multiplayerWinner.id === auth.currentUser?.uid 
                           ? `Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
                           : `Rival has achieved completion via ${multiplayerWinner.reason}. Retrying synchronization recommended.`}
                       </p>
@@ -1581,7 +1629,8 @@ export default function App() {
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
-                      if (socket) socket.disconnect();
+                      setDistance(0);
+                      setCurrentSpeed(0);
                     }}
                     className="relative z-10 bg-white text-green-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-green-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
