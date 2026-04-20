@@ -37,10 +37,14 @@ async function startServer() {
         angle: 0,
         gearRatio: 1,
         temp: 20,
+        brakeTemp: 20,
         progress: 0,
+        isExploded: false
       };
       
       const playerCount = Object.keys(rooms[roomId].players).length;
+      console.log(`Room ${roomId}: ${playerCount} players`);
+
       if (playerCount >= 2 && rooms[roomId].status === 'waiting') {
         rooms[roomId].status = 'racing';
         io.to(roomId).emit("start-race");
@@ -72,7 +76,8 @@ async function startServer() {
           ...rooms[roomId].players[socket.id],
           ...state,
         };
-        socket.to(roomId).emit("player-updated", rooms[roomId].players[socket.id]);
+        // Use io.to(roomId) instead of socket.to(roomId) for more reliable sync
+        io.to(roomId).emit("player-updated", rooms[roomId].players[socket.id]);
       }
     });
 

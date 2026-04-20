@@ -1353,6 +1353,14 @@ export default function App() {
                             Mode: <span className="text-white">{gameMode === 'multi' ? 'Multiplayer' : 'Solo'}</span>
                             {gameMode === 'multi' && <> | Sector: <span className="text-white uppercase font-black text-rose-400">{roomId}</span></>}
                           </p>
+                          {gameMode === 'multi' && (
+                            <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full self-center">
+                              <Users className="w-3 h-3 text-rose-400" />
+                              <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">
+                                {Object.keys(otherPlayers).length + 1} Player(s) in Sector
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         <motion.button
