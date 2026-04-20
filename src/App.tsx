@@ -227,8 +227,13 @@ export default function App() {
     localStorage.setItem('gear_race_gears', JSON.stringify(gears));
   }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
+  const gameStateRef = useRef(gameState);
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
   const [multiplayerWinner, setMultiplayerWinner] = useState<{ id: string, reason: string } | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
+  const isWaitingRef = useRef(isWaiting);
+  useEffect(() => { isWaitingRef.current = isWaiting; }, [isWaiting]);
   const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
   const [availableRooms, setAvailableRooms] = useState<{id: string, createdAt: any}[]>([]);
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
@@ -488,16 +493,22 @@ export default function App() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       
-      if (data.status === 'racing' && (gameState === 'setup' || isWaiting)) {
+      const currentGameState = gameStateRef.current;
+      const currentIsWaiting = isWaitingRef.current;
+
+      if (data.status === 'racing' && (currentGameState === 'setup' || currentIsWaiting)) {
         setIsWaiting(false);
         setGameState('racing');
         setMultiplayerWinner(null);
       } else if (data.status === 'finished') {
-        if (gameState === 'racing' || gameState === 'exploded' || gameState === 'finished') {
-          if (data.winnerId && (!multiplayerWinner || multiplayerWinner.id !== data.winnerId)) {
-            setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
-            setGameState('finished');
-          }
+        if (currentGameState === 'racing' || currentGameState === 'exploded' || currentGameState === 'finished') {
+          setGameState('finished');
+          setMultiplayerWinner(prev => {
+            if (!prev || prev.id !== data.winnerId) {
+              return { id: data.winnerId, reason: data.winReason || 'Race Finished' };
+            }
+            return prev;
+          });
         }
       }
     });
@@ -516,7 +527,7 @@ export default function App() {
       const allPlayers = snapshot.docs.map(d => d.data());
       const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
       
-      if (allReady && gameState === 'setup') {
+      if (allReady && gameStateRef.current === 'setup') {
         updateDoc(roomRef, { status: 'racing' }).catch(console.error);
       }
     });
