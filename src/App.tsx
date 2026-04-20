@@ -620,10 +620,12 @@ export default function App() {
 
       sounds.updateEngine(localSpeed, activeAcceleration);
       
-      // Realistic Speed calculation
+      // Realistic Speed and Torque calculation
       const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
       let topSpeed = 200 + (gearRatio * 300 * efficiency); 
-      let acceleration = 150 * efficiency;
+      let baseTorque = 150 * efficiency * (hasUpgrade('nitro_system') ? 1.25 : 1);
+      const currentTorque = gearRatio > 0 ? baseTorque / Math.max(0.3, Math.pow(gearRatio, 0.7)) : 0;
+      let acceleration = currentTorque;
       
       // Apply Boost
       if (localBoostTimer > 0) {
@@ -742,12 +744,12 @@ export default function App() {
             let boost = 0;
             let msg = "";
             
-            if (lateralDist < 0.8) { boost = 6; msg = "EXTREME MISS! +6s"; }
-            else if (lateralDist < 1.0) { boost = 4; msg = "CLOSE MISS! +4s"; }
-            else if (lateralDist < 1.3) { boost = 2; msg = "NEAR MISS! +2s"; }
+            if (lateralDist < 0.8) { boost = 6; msg = "EXTREME MISS! 6s"; }
+            else if (lateralDist < 1.0) { boost = 4; msg = "CLOSE MISS! 4s"; }
+            else if (lateralDist < 1.3) { boost = 2; msg = "NEAR MISS! 2s"; }
             
             if (boost > 0) {
-              localBoostTimer += boost;
+              localBoostTimer = Math.max(localBoostTimer, boost); // Calculate the latest best boost, don't stack
               setBoostTime(localBoostTimer);
               setLastBoostType('NEAR MISS');
               nearMissTextRef.current = { text: msg, x: 0, y: 0, opacity: 1 };
@@ -1220,8 +1222,8 @@ export default function App() {
                   <h2 className="text-sm font-black uppercase tracking-tighter italic text-white/60">Live Race</h2>
                 </div>
                 
-                {/* HUD: Comp Stats - Moved to Top Left */}
-                <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex">
+                {/* HUD: Comp Stats - Always visible */}
+                <div className="flex flex-col gap-2 pointer-events-none">
                   <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-2 w-48 shadow-lg">
                     <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-2 flex items-center justify-between">
                       <span>Competitors</span>
@@ -1292,21 +1294,30 @@ export default function App() {
                   </p>
                 </div>
                 <div className="w-[1px] bg-white/10" />
-                {gameMode === 'multi' && Object.values(otherPlayers).length > 0 ? (
-                  <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap to Rival</p>
-                    <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
-                      {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
-                        <span className="text-xs ml-1 opacity-40 text-white font-black italic">M</span>
-                    </p>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                    <p className="text-4xl font-mono font-black text-blue-400 italic">
-                      {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
-                    </p>
-                  </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                  <p className="text-4xl font-mono font-black text-blue-400 italic">
+                    {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div className="w-[1px] bg-white/10" />
+                <div className="text-center">
+                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
+                  <p className="text-4xl font-mono font-black text-amber-500 italic" title="Higher torque = faster acceleration">
+                    {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
+                  </p>
+                </div>
+                {gameMode === 'multi' && Object.values(otherPlayers).length > 0 && (
+                  <>
+                    <div className="w-[1px] bg-white/10" />
+                    <div className="text-center">
+                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap</p>
+                      <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                        {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
+                          <span className="text-xs ml-1 opacity-40 text-white font-black italic">M</span>
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -2024,7 +2035,7 @@ export default function App() {
                     <WheelVisual className="shrink-0" />
                   </div>
 
-                  <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
                       <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Gear Ratio</p>
                       <p className="text-2xl font-mono font-black text-rose-500">{gearRatio.toFixed(2)}</p>
@@ -2032,6 +2043,12 @@ export default function App() {
                     <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
                       <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Efficiency</p>
                       <p className="text-2xl font-mono font-black text-green-400">{(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%</p>
+                    </div>
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                      <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Torque</p>
+                      <p className="text-2xl font-mono font-black text-amber-500">
+                        {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
+                      </p>
                     </div>
                     <div className="bg-white/5 rounded-2xl p-4 border border-white/10 col-span-2 flex items-center gap-4">
                       <div className="flex-1">
