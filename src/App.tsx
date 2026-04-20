@@ -209,14 +209,13 @@ export default function App() {
     localStorage.setItem('gear_race_gears', JSON.stringify(gears));
   }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
-  const [isGarageOpen, setIsGarageOpen] = useState(true);
+  const [isGarageOpen, setIsGarageOpen] = useState(false);
   const [gearRatio, setGearRatio] = useState(1);
   const [engineTemp, setEngineTemp] = useState(20);
   const [brakeTemp, setBrakeTemp] = useState(20);
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [isAccelerating, setIsAccelerating] = useState(false);
-  const [isAutoDrive, setIsAutoDrive] = useState(true);
   const [isBraking, setIsBraking] = useState(false);
   const [playerLane, setPlayerLane] = useState(0); // -1, 0, 1
   const [targetLane, setTargetLane] = useState(0);
@@ -259,17 +258,15 @@ export default function App() {
   
   const controlsRef = useRef({
     isAccelerating: false,
-    isAutoDrive: true,
     isBraking: false,
     connectedGears: [] as string[]
   });
 
   useEffect(() => {
     controlsRef.current.isAccelerating = isAccelerating;
-    controlsRef.current.isAutoDrive = isAutoDrive;
     controlsRef.current.isBraking = isBraking;
     controlsRef.current.connectedGears = connectedGears;
-  }, [isAccelerating, isAutoDrive, isBraking, connectedGears]);
+  }, [isAccelerating, isBraking, connectedGears]);
 
   useEffect(() => {
     localStorage.setItem('gear_race_credits', credits.toString());
@@ -298,17 +295,19 @@ export default function App() {
   // Keyboard Controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') setIsAccelerating(true);
-      if (e.key === 'ArrowDown' || e.key === 's') setIsBraking(true);
+      const key = e.key.toLowerCase();
+      if (key === 'arrowup' || key === 'w' || key === ' ') setIsAccelerating(true);
+      if (key === 'arrowdown' || key === 's') setIsBraking(true);
       
       if (gameState === 'racing') {
-        if (e.key === 'ArrowLeft' || e.key === 'a') setTargetLane(prev => Math.max(-1, prev - 1));
-        if (e.key === 'ArrowRight' || e.key === 'd') setTargetLane(prev => Math.min(1, prev + 1));
+        if (key === 'arrowleft' || key === 'a') setTargetLane(prev => Math.max(-1, prev - 1));
+        if (key === 'arrowright' || key === 'd') setTargetLane(prev => Math.min(1, prev + 1));
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') setIsAccelerating(false);
-      if (e.key === 'ArrowDown' || e.key === 's') setIsBraking(false);
+      const key = e.key.toLowerCase();
+      if (key === 'arrowup' || key === 'w' || key === ' ') setIsAccelerating(false);
+      if (key === 'arrowdown' || key === 's') setIsBraking(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -317,7 +316,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [gameState]);
 
   // Initialize Socket
   useEffect(() => {
@@ -461,8 +460,8 @@ export default function App() {
       const dt = (time - lastTime) / 1000;
       lastTime = time;
 
-      const { isAccelerating: acc, isAutoDrive: auto, isBraking: brake } = controlsRef.current;
-      const activeAcceleration = acc || auto;
+      const { isAccelerating: acc, isBraking: brake } = controlsRef.current;
+      const activeAcceleration = acc;
 
       sounds.updateEngine(localSpeed, activeAcceleration);
       
@@ -790,63 +789,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-rose-500/30">
-      {/* Header */}
-      <header className="p-4 md:p-6 border-b border-white/10 flex flex-col sm:flex-row justify-between items-center bg-[#111111]/80 backdrop-blur-md sticky top-0 z-50 gap-4">
-        <div className="flex items-center gap-3 self-start sm:self-center">
-          <div className="p-2 bg-rose-600 rounded-lg shadow-lg shadow-rose-600/20">
-            <Settings className="w-6 h-6 text-white animate-spin-slow" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">GEAR RACE</h1>
-            <p className="text-xs text-white/40 font-mono uppercase tracking-widest">3D Drag Race</p>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 md:gap-6 w-full sm:w-auto">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-600/20 border border-rose-600/30 rounded-full">
-            <Coins className="w-4 h-4 text-rose-400" />
-            <span className="text-sm font-mono font-bold text-rose-400">{credits} CR</span>
-          </div>
-          <button 
-            onClick={() => setGameState(gameState === 'shop' ? 'setup' : 'shop')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full font-bold transition-all border text-xs md:text-sm ${
-              gameState === 'shop' 
-                ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' 
-                : 'bg-white/5 border-white/10 hover:bg-white/10'
-            }`}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            SHOP
-          </button>
-          <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 hidden md:flex">
-            <Users className="w-4 h-4 text-rose-400" />
-            <span className="text-sm font-medium">{Object.keys(otherPlayers).length + 1} Players</span>
-          </div>
-          <button 
-            onClick={() => setIsGarageOpen(!isGarageOpen)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full font-bold transition-all border text-xs md:text-sm ${
-              isGarageOpen 
-                ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' 
-                : 'bg-white/5 border-white/10 hover:bg-white/10'
-            }`}
-          >
-            <Settings className={`w-4 h-4 ${isGarageOpen ? 'animate-spin-slow' : ''}`} />
-            GARAGE
-          </button>
-          <button 
-            onClick={() => setGameState(gameState === 'setup' ? 'racing' : 'setup')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full font-bold transition-all text-xs md:text-sm ${
-              gameState === 'setup' 
-                ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20' 
-                : 'bg-white/10 hover:bg-white/20'
-            }`}
-          >
-            {gameState === 'setup' ? <Play className="w-4 h-4 fill-current" /> : <RotateCcw className="w-4 h-4" />}
-            {gameState === 'setup' ? 'START' : 'RESET'}
-          </button>
-        </div>
-      </header>
-
       <AnimatePresence>
         {gameState === 'shop' && (
           <motion.div 
@@ -1017,58 +959,113 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="max-w-7xl mx-auto p-4 md:p-8 flex flex-col gap-6 md:gap-8">
-        {/* Top: Race View */}
-        <div className="w-full space-y-6 transition-all duration-500">
-          <div className="bg-[#111111] rounded-2xl border border-white/10 p-3 md:p-6 shadow-2xl relative overflow-hidden h-[400px] md:h-[650px] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
+      <main className="h-screen w-full flex flex-col relative overflow-hidden bg-black">
+        {/* Race View - Full Screen Container */}
+        <div className="flex-1 relative overflow-hidden flex flex-col">
+          <div className="flex-1 relative bg-[#111111] overflow-hidden flex flex-col">
+            {/* Header Overlay */}
+            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-40 bg-gradient-to-b from-black/80 to-transparent">
+              <div className="flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
-                Live Race
-              </h2>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2">
-                  <Thermometer className={`w-4 h-4 ${engineTemp > 70 ? 'text-red-500 animate-pulse' : 'text-blue-400'}`} />
-                  <span className="text-sm font-mono">{engineTemp.toFixed(1)}°C</span>
+                <h2 className="text-sm font-black uppercase tracking-tighter italic">Live Race</h2>
+              </div>
+              <div className="flex gap-4 items-center">
+                <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
+                  <Thermometer className={`w-3 h-3 ${engineTemp > 70 ? 'text-red-500 animate-pulse' : 'text-blue-400'}`} />
+                  <span className="text-xs font-mono font-bold">{engineTemp.toFixed(1)}°C</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400" />
-                  <span className="text-sm font-mono">{(gearRatio * 10).toFixed(0)} Nm</span>
+                <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
+                  <Zap className="w-3 h-3 text-yellow-400" />
+                  <span className="text-xs font-mono font-bold">{(gearRatio * 10).toFixed(0)} Nm</span>
+                </div>
+                <button 
+                  onClick={() => setIsGarageOpen(!isGarageOpen)}
+                  className={`p-2 rounded-full transition-all border ${isGarageOpen ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                >
+                  <Settings className={`w-4 h-4 ${isGarageOpen ? 'animate-spin-slow' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Dashboard Overlay */}
+            <div className="absolute top-20 left-4 right-4 flex justify-between items-start pointer-events-none z-30">
+              <div className="flex flex-col gap-4">
+                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex gap-6 shadow-2xl">
+                  <div className="text-center">
+                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
+                    <p className="text-4xl font-mono font-black text-white">
+                      {(currentSpeed / 10).toFixed(0)}
+                      <span className="text-xs ml-1 opacity-40">km/h</span>
+                    </p>
+                  </div>
+                  <div className="w-[1px] bg-white/10" />
+                  <div className="text-center">
+                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                    <p className="text-4xl font-mono font-black text-green-400">
+                      {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
+                    </p>
+                  </div>
+                </div>
+
+                {/* Thermal HUD */}
+                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 w-48 shadow-xl space-y-3">
+                   <div>
+                    <div className="flex justify-between text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">
+                      <span>Engine Temp</span>
+                      <span className={engineTemp > 75 ? 'text-rose-500' : 'text-blue-400'}>{engineTemp.toFixed(0)}°C</span>
+                    </div>
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        className={`h-full ${engineTemp > 75 ? 'bg-rose-500' : 'bg-blue-500'}`}
+                        animate={{ width: `${(engineTemp / 90) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">
+                      <span>Brake Heat</span>
+                      <span className={brakeTemp > 75 ? 'text-orange-500' : 'text-yellow-500'}>{brakeTemp.toFixed(0)}°C</span>
+                    </div>
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        className={`h-full ${brakeTemp > 75 ? 'bg-orange-500' : 'bg-yellow-500'}`}
+                        animate={{ width: `${brakeTemp}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* HUD: Comp Stats & Thermal Overlay */}
+              <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex">
+                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 w-48 shadow-xl">
+                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-2 flex items-center justify-between">
+                    <span>Competitors</span>
+                    <Users className="w-2 h-2 text-rose-500" />
+                  </p>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-rose-500">YOU</span>
+                      <div className="flex-1 mx-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-rose-500" style={{ width: `${(distance / TRACK_LENGTH) * 100}%` }} />
+                      </div>
+                      <span className="text-[10px] font-mono text-white/40">{Math.floor((distance / TRACK_LENGTH) * 100)}%</span>
+                    </div>
+                    {Object.values(otherPlayers).slice(0, 3).map((p: any) => (
+                      <div key={p.id} className="flex items-center justify-between opacity-60">
+                        <span className="text-[10px] font-bold text-blue-400">P-{p.id.slice(0, 2)}</span>
+                        <div className="flex-1 mx-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-400" style={{ width: `${p.progress * 100}%` }} />
+                        </div>
+                        <span className="text-[10px] font-mono text-white/40">{Math.floor(p.progress * 100)}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Dashboard Overlay - Moved to top for better visibility */}
-            <div className="absolute top-16 left-4 right-4 flex justify-between items-start pointer-events-none z-30">
-              <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 md:p-3 flex gap-4 shadow-xl">
-                <div className="text-center">
-                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                  <p className="text-lg md:text-2xl font-mono font-black text-white">
-                    {(currentSpeed / 10).toFixed(0)}
-                    <span className="text-[10px] ml-1 opacity-40">km/h</span>
-                  </p>
-                </div>
-                <div className="w-[1px] bg-white/10" />
-                <div className="text-center">
-                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                  <p className="text-lg md:text-2xl font-mono font-black text-green-400">
-                    {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 md:p-3 shadow-xl hidden sm:block">
-                <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Engine Load</p>
-                <div className="w-20 md:w-32 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-blue-600 to-blue-400"
-                    animate={{ width: `${Math.min(100, (gearRatio * 5))}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 relative rounded-xl overflow-hidden border border-white/5 bg-[#1a1a1a] min-h-[250px]">
+            <div className="flex-1 relative overflow-hidden bg-[#000]">
               <div ref={canvasRef} className="w-full h-full relative">
                 {/* Boost Notification */}
                 <AnimatePresence>
@@ -1113,56 +1110,92 @@ export default function App() {
               </div>
             </div>
 
-            {/* On-Screen Controls - Moved outside canvas to avoid blocking view */}
-            {gameState === 'racing' && (
-              <div className="mt-4 pointer-events-none">
-                <div className="flex justify-center mb-4">
-                  <div className="bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
-                    <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">
-                      {isAutoDrive ? 'Auto-Drive Active' : 'Manual Control'}
-                    </p>
-                  </div>
+            {/* Setup Mode Overlay */}
+            {gameState === 'setup' && !isGarageOpen && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-auto"
+              >
+                <div className="flex flex-col gap-6 items-center">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setGameState('racing')}
+                    className="group relative bg-rose-600 px-16 py-6 rounded-3xl font-black text-3xl italic tracking-tighter text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] border-b-4 border-rose-800 transition-all"
+                  >
+                    <div className="flex items-center gap-4">
+                      <Play className="w-10 h-10 fill-current" />
+                      START MISSION
+                    </div>
+                  </motion.button>
+
+                  <button
+                    onClick={() => setIsGarageOpen(true)}
+                    className="flex items-center gap-3 bg-white/10 hover:bg-white/20 px-8 py-3 rounded-2xl border border-white/10 backdrop-blur-xl transition-all group"
+                  >
+                    <Settings className="w-5 h-5 text-rose-500 group-hover:animate-spin-slow" />
+                    <span className="text-sm font-black uppercase tracking-widest text-white italic">Open Assembly Garage</span>
+                  </button>
+                  
+                  <p className="text-[10px] text-white/40 uppercase tracking-[0.3em] mt-4 font-black">Prepare for High Velocity</p>
                 </div>
+              </motion.div>
+            )}
 
-                <div className="flex justify-between items-end gap-4">
-                  {/* Left: Lane Switch / Brake */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setTargetLane(prev => Math.max(-1, prev - 1))}
-                      className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
-                    >
-                      <ChevronLeft className="w-10 h-10 text-white" />
-                    </button>
-                    <button
-                      onMouseDown={() => setIsBraking(true)}
-                      onMouseUp={() => setIsBraking(false)}
-                      onTouchStart={() => setIsBraking(true)}
-                      onTouchEnd={() => setIsBraking(false)}
-                      className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-black/60 backdrop-blur-xl border-2 border-white/20 rounded-2xl flex flex-col items-center justify-center active:scale-90 active:bg-red-500/40 transition-all shadow-lg shadow-black/40"
-                    >
-                      <RotateCcw className="w-6 h-6 text-white" />
-                      <span className="text-[8px] font-bold text-white/40 uppercase mt-1">Brake</span>
-                    </button>
+            {/* On-Screen Controls */}
+            {gameState === 'racing' && (
+              <div className="absolute bottom-6 left-4 right-4 pointer-events-none z-40">
+                <div className="flex flex-col gap-4">
+                  <div className="flex justify-center">
+                    <div className="bg-black/40 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
+                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                       <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest italic">
+                        Manual Drive Active
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Right: Lane Switch / Gas */}
-                  <div className="flex gap-3">
-                    <button
-                      onMouseDown={() => setIsAccelerating(true)}
-                      onMouseUp={() => setIsAccelerating(false)}
-                      onTouchStart={() => setIsAccelerating(true)}
-                      onTouchEnd={() => setIsAccelerating(false)}
-                      className="pointer-events-auto w-20 h-20 md:w-24 md:h-24 bg-rose-600/80 backdrop-blur-xl border-2 border-rose-400/40 rounded-3xl flex flex-col items-center justify-center active:scale-90 active:bg-rose-500 transition-all shadow-2xl shadow-rose-600/40"
-                    >
-                      <Play className="w-10 h-10 text-white fill-current" />
-                      <span className="text-[10px] font-black text-white uppercase mt-1">Boost</span>
-                    </button>
-                    <button
-                      onClick={() => setTargetLane(prev => Math.min(1, prev + 1))}
-                      className="pointer-events-auto w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-xl border-2 border-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/40"
-                    >
-                      <ChevronRight className="w-10 h-10 text-white" />
-                    </button>
+                  <div className="flex justify-between items-end">
+                    {/* Left: Steering/Brake */}
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => setTargetLane(prev => Math.max(-1, prev - 1))}
+                        className="pointer-events-auto w-16 h-16 bg-white/5 backdrop-blur-xl border border-white/20 rounded-3xl flex items-center justify-center active:scale-90 active:bg-white/20 transition-all shadow-2xl"
+                      >
+                        <ChevronLeft className="w-8 h-8 text-white" />
+                      </button>
+                      <button
+                        onMouseDown={() => setIsBraking(true)}
+                        onMouseUp={() => setIsBraking(false)}
+                        onTouchStart={() => setIsBraking(true)}
+                        onTouchEnd={() => setIsBraking(false)}
+                        className="pointer-events-auto w-16 h-16 bg-red-600/40 backdrop-blur-xl border border-red-500/40 rounded-3xl flex flex-col items-center justify-center active:scale-90 active:bg-red-500 transition-all shadow-2xl"
+                      >
+                        <RotateCcw className="w-6 h-6 text-white" />
+                        <span className="text-[8px] font-bold text-white uppercase">Brake</span>
+                      </button>
+                    </div>
+
+                    {/* Right: Steering/Boost */}
+                    <div className="flex gap-4">
+                      <button
+                        onMouseDown={() => setIsAccelerating(true)}
+                        onMouseUp={() => setIsAccelerating(false)}
+                        onTouchStart={() => setIsAccelerating(true)}
+                        onTouchEnd={() => setIsAccelerating(false)}
+                        className="pointer-events-auto w-24 h-24 bg-rose-600 backdrop-blur-xl border-2 border-rose-400 rounded-3xl flex flex-col items-center justify-center active:scale-90 active:bg-rose-500 transition-all shadow-2xl shadow-rose-600/60"
+                      >
+                        <Play className="w-10 h-10 text-white fill-current" />
+                        <span className="text-sm font-black text-white uppercase italic mt-1">Accelerate</span>
+                      </button>
+                      <button
+                        onClick={() => setTargetLane(prev => Math.min(1, prev + 1))}
+                        className="pointer-events-auto w-16 h-16 bg-white/5 backdrop-blur-xl border border-white/20 rounded-3xl flex items-center justify-center active:scale-90 active:bg-white/20 transition-all shadow-2xl"
+                      >
+                        <ChevronRight className="w-8 h-8 text-white" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1193,266 +1226,252 @@ export default function App() {
             <AnimatePresence>
               {gameState === 'exploded' && (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 1.1 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="absolute inset-0 bg-red-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center z-50"
+                  exit={{ opacity: 0, scale: 1.1 }}
+                  className="absolute inset-0 bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden"
                 >
-                  <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center mb-6 animate-bounce">
-                    <AlertTriangle className="w-10 h-10 text-white" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.2)_0%,transparent_70%)] animate-pulse" />
+                  <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
+                    <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
+                    <AlertTriangle className="w-12 h-12 text-white relative z-10" />
                   </div>
-                  <h3 className="text-3xl font-black mb-2">ENGINE OVERHEATED!</h3>
-                  <p className="text-red-200/60 mb-8 max-w-xs">Your gear ratio was too aggressive for the terrain. The engine reached 90°C and exploded.</p>
+                  <h3 className="text-5xl font-black mb-4 italic tracking-tighter text-white drop-shadow-2xl">CRITICAL FAILURE</h3>
+                  <p className="text-red-200/60 mb-10 max-w-sm text-lg italic leading-tight">The mechanical pressure was too extreme. The engine has detonated into shrapnel.</p>
                   <button 
                     onClick={() => {
                       setGameState('setup');
                       setEngineTemp(20);
                     }}
-                    className="bg-white text-red-950 px-8 py-3 rounded-full font-bold hover:bg-red-100 transition-colors"
+                    className="relative z-10 bg-white text-red-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-red-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
-                    REBUILD MACHINE
+                    REASSEMBLE MACHINE
                   </button>
+                  <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
                 </motion.div>
               )}
 
               {gameState === 'finished' && (
                 <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 50 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="absolute inset-0 bg-green-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center z-50"
+                  className="absolute inset-0 bg-green-950/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden"
                 >
-                  <Trophy className="w-20 h-20 text-yellow-500 mb-6" />
-                  <h3 className="text-3xl font-black mb-2">VICTORY!</h3>
-                  <p className="text-green-200/60 mb-8">You conquered the terrain with precision engineering.</p>
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,197,94,0.2)_0%,transparent_70%)] animate-pulse" />
+                  <Trophy className="w-24 h-24 text-yellow-500 mb-8 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)] animate-bounce" />
+                  <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">GLORY ACHIEVED</h3>
+                  <p className="text-green-200/60 mb-10 max-w-sm text-lg italic italic leading-tight">Your machine has survived the gauntlet. You are the ultimate master of mechanics.</p>
                   <button 
                     onClick={() => setGameState('setup')}
-                    className="bg-white text-green-950 px-8 py-3 rounded-full font-bold hover:bg-green-100 transition-colors"
+                    className="relative z-10 bg-white text-green-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-green-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
-                    RACE AGAIN
+                    CONTINUE CAMPAIGN
                   </button>
+                  <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Leaderboard / Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-            <div className="bg-[#111111] rounded-2xl border border-white/10 p-4 md:p-6 shadow-xl">
-              <h3 className="text-[10px] md:text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Thermal Status</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Engine Core</span>
-                    <span className={engineTemp > 70 ? 'text-red-400' : 'text-white/60'}>{engineTemp.toFixed(0)}°C</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-300 ${engineTemp > 70 ? 'bg-red-500' : 'bg-blue-500'}`}
-                      style={{ width: `${(engineTemp / 90) * 100}%` }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Brake Friction</span>
-                    <span className={brakeTemp > 70 ? 'text-orange-400' : 'text-white/60'}>{brakeTemp.toFixed(0)}°C</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-300 ${brakeTemp > 70 ? 'bg-orange-500' : 'bg-yellow-500'}`}
-                      style={{ width: `${brakeTemp}%` }}
-                    />
-                  </div>
+      {/* Competitors Overlay (Always visible during race) */}
+      {gameState === 'racing' && !isGarageOpen && (
+        <div className="absolute bottom-32 left-4 md:left-6 z-30 pointer-events-none hidden md:block">
+          <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 w-48 shadow-2xl">
+            <h3 className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-3 italic">Live Rankings</h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
+                <div className="flex-1">
+                   <div className="flex justify-between text-[8px] font-black text-white/40 uppercase mb-1">
+                      <span>YOU</span>
+                      <span>{Math.floor((distance / TRACK_LENGTH) * 100)}%</span>
+                   </div>
+                   <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                      <motion.div className="h-full bg-rose-500" animate={{ width: `${(distance / TRACK_LENGTH) * 100}%` }} />
+                   </div>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-[#111111] rounded-2xl border border-white/10 p-4 md:p-6 shadow-xl">
-              <h3 className="text-[10px] md:text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Competitors</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-rose-500" />
-                    <span className="text-sm font-medium">You</span>
+              {Object.values(otherPlayers).slice(0, 3).map((p: any) => (
+                <div key={p.id} className="flex items-center gap-3 opacity-40">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <div className="flex-1">
+                     <div className="flex justify-between text-[8px] font-black text-white/40 uppercase mb-1">
+                        <span>P-{p.id.slice(0, 2)}</span>
+                        <span>{Math.floor(p.progress * 100)}%</span>
+                     </div>
+                     <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-400" style={{ width: `${p.progress * 100}%` }} />
+                     </div>
                   </div>
-                  <span className="text-xs font-mono text-white/40">{((playerState?.progress || 0) * 100).toFixed(0)}%</span>
                 </div>
-                {(Object.values(otherPlayers) as PlayerState[]).map(p => (
-                  <div key={p.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-400" />
-                      <span className="text-sm font-medium text-white/60">Player {p.id.slice(0, 4)}</span>
-                    </div>
-                    <span className="text-xs font-mono text-white/40">{(p.progress * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </div>
-
-        {/* Bottom: Gear Assembly */}
+      )}
+    </div>
+               {/* Garage Overlay */}
         <AnimatePresence>
           {isGarageOpen && (
             <motion.div 
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 50 }}
-              className="w-full space-y-6"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl p-4 md:p-8 flex items-center justify-center overflow-y-auto"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setIsGarageOpen(false);
+              }}
             >
-              <div className="bg-[#111111] rounded-2xl border border-white/10 p-6 shadow-2xl relative">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-rose-500" />
-                    Gear Assembly
-                  </h2>
-                  <div className="text-xs font-mono text-white/40 bg-white/5 px-2 py-1 rounded">12x3 GRID</div>
-                </div>
-
-                <div className="relative flex flex-col md:flex-row items-center gap-4">
-                  <EngineVisual className="shrink-0 md:block hidden" />
-                  
-                  <div className="flex-1 w-full overflow-x-auto py-24 scrollbar-thin scrollbar-thumb-white/10">
-                    <div 
-                      className="grid gap-1 bg-[#1a1a1a] p-2 rounded-xl border border-white/5 min-h-[200px] gear-grid-bg relative min-w-[500px] md:min-w-[600px] overflow-visible"
-                      style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
+              <div className="max-w-4xl w-full my-auto">
+                <div className="bg-[#111111] rounded-3xl border border-white/10 p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative">
+                  <div className="absolute top-4 right-4 z-[101]">
+                    <button 
+                      onClick={() => setIsGarageOpen(false)}
+                      className="p-4 bg-rose-600 hover:bg-rose-500 rounded-2xl border border-rose-400 shadow-xl shadow-rose-600/20 transition-all active:scale-90"
                     >
-                      <div className="absolute inset-0 scanline pointer-events-none rounded-xl overflow-hidden" />
-                    {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => {
-                      const x = i % GRID_COLS;
-                      const y = Math.floor(i / GRID_COLS);
-                      const gear = gears.find(g => g.x === x && g.y === y);
-                      const isEngine = x === 0;
-                      const isWheel = x === GRID_COLS - 1;
+                      <X className="w-6 h-6 text-white" />
+                    </button>
+                  </div>
 
-                      return (
-                        <div key={i} className={`relative ${selectedGearId === gear?.id ? 'z-[300]' : 'z-0'}`}>
-                          <button
-                            onClick={() => addGear(x, y)}
-                            className={`w-full aspect-square min-h-[30px] rounded-md transition-all flex items-center justify-center relative group overflow-hidden border border-white/5 ${
-                              gear 
-                                ? connectedGears.includes(gear.id) 
-                                  ? 'bg-rose-600 shadow-lg shadow-rose-600/40 scale-95 ring-2 ring-rose-400/50' 
-                                  : 'bg-neutral-700 opacity-60'
-                                : 'bg-white/10 hover:bg-white/20'
-                            } ${isEngine ? 'border-l-2 border-blue-500/50' : ''} ${isWheel ? 'border-r-2 border-green-500/50' : ''}`}
-                          >
-                            {gear && (
-                              <motion.div 
-                                animate={{ rotate: isConnected && (isAccelerating || isAutoDrive) ? 360 : 0 }}
-                                transition={{ duration: 2 / (gear.teeth / 16), repeat: Infinity, ease: "linear" }}
-                                className="relative flex items-center justify-center w-full h-full p-1"
-                              >
-                                <GearIcon 
-                                  teeth={Math.min(gear.teeth, 32)} 
-                                  color={connectedGears.includes(gear.id) ? '#fff' : 'rgba(255,255,255,0.2)'} 
-                                  className="w-full h-full"
-                                />
-                                <span className="absolute text-[8px] font-black text-white bg-black/50 px-1 rounded">{gear.teeth}</span>
-                              </motion.div>
-                            )}
-                            {!gear && (isEngine || isWheel) && (
-                              <div className={`w-1 h-1 rounded-full ${isEngine ? 'bg-blue-500' : 'bg-green-500'} opacity-30`} />
-                            )}
-                          </button>
-
-                          {/* Gear Selection Dropdown */}
-                          <AnimatePresence>
-                            {selectedGearId === gear?.id && (
-                              <motion.div 
-                                initial={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
-                                className={`absolute z-[500] ${y < 2 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-[#1a1a1a] border border-white/20 rounded-xl p-3 shadow-[0_0_50px_rgba(0,0,0,0.9)] min-w-[180px]`}
-                              >
-                                <div className="flex justify-between items-center mb-2">
-                                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Select Teeth</p>
-                                  <button onClick={(e) => { e.stopPropagation(); setSelectedGearId(null); }} className="text-white/40 hover:text-white">
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-4 gap-1">
-                                  {GEAR_TYPES.map(t => (
-                                    <button
-                                      key={t}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setTeeth(gear.id, t);
-                                      }}
-                                      className={`px-1 py-1.5 rounded-md text-[10px] font-bold transition-colors ${
-                                        gear.teeth === t ? 'bg-rose-600 text-white' : 'hover:bg-white/10 text-white/60'
-                                      }`}
-                                    >
-                                      {t}T
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="mt-2 pt-2 border-t border-white/10">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      removeGear(gear.id);
-                                      setSelectedGearId(null);
-                                    }}
-                                    className="w-full py-1.5 text-[10px] font-bold text-red-400 hover:bg-red-500/10 rounded transition-colors uppercase"
-                                  >
-                                    Remove Gear
-                                  </button>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      );
-                    })}
+                  <div className="flex justify-between items-center mb-6 pr-16">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-rose-600 rounded-lg">
+                        <Settings className="w-6 h-6 text-white animate-spin-slow" />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-black italic uppercase tracking-tighter text-rose-500">Gear Assembly</h2>
+                        <p className="text-[10px] text-white/40 uppercase tracking-widest">Fine-tune your mechanical beast</p>
+                      </div>
                     </div>
                   </div>
 
-                  <WheelVisual className="shrink-0 md:block hidden" />
-                </div>
+                  <div className="relative flex flex-col md:flex-row items-center gap-8">
+                    <EngineVisual className="shrink-0" />
+                    
+                    <div className="flex-1 w-full overflow-x-auto py-12 scrollbar-none">
+                      <div 
+                        className="grid gap-1 bg-black/40 p-4 rounded-2xl border border-white/5 min-h-[250px] gear-grid-bg relative min-w-[500px]"
+                        style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
+                      >
+                        <div className="absolute inset-0 grayscale scanline pointer-events-none opacity-20" />
+                      {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => {
+                        const x = i % GRID_COLS;
+                        const y = Math.floor(i / GRID_COLS);
+                        const gear = gears.find(g => g.x === x && g.y === y);
+                        const isEngine = x === 0;
+                        const isWheel = x === GRID_COLS - 1;
 
-                <div className="mt-6 grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <p className="text-xs text-white/40 uppercase font-bold mb-1">Gear Ratio</p>
-                    <p className="text-2xl font-mono font-bold text-rose-400">{gearRatio.toFixed(2)}</p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                    <p className="text-xs text-white/40 uppercase font-bold mb-1">Efficiency</p>
-                    <p className="text-2xl font-mono font-bold text-green-400">{(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%</p>
-                  </div>
-                </div>
+                        return (
+                          <div key={i} className={`relative ${selectedGearId === gear?.id ? 'z-[300]' : 'z-0'}`}>
+                            <button
+                              onClick={() => addGear(x, y)}
+                              className={`w-full aspect-square min-h-[40px] rounded-lg transition-all flex items-center justify-center relative group overflow-hidden border ${
+                                gear 
+                                  ? connectedGears.includes(gear.id) 
+                                    ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/40 ring-1 ring-white/20' 
+                                    : 'bg-neutral-800 border-white/10 opacity-60'
+                                  : 'bg-white/5 border-white/5 hover:bg-white/10'
+                              } ${isEngine ? 'border-l-4 border-blue-500/50' : ''} ${isWheel ? 'border-r-4 border-green-500/50' : ''}`}
+                            >
+                              {gear && (
+                                <div className="relative flex items-center justify-center w-full h-full p-1">
+                                  <GearIcon 
+                                    teeth={Math.min(gear.teeth, 32)} 
+                                    color={connectedGears.includes(gear.id) ? '#fff' : 'rgba(255,255,255,0.2)'} 
+                                    className="w-full h-full"
+                                  />
+                                  <span className="absolute text-[9px] font-black text-white bg-black/80 px-1 rounded-sm">{gear.teeth}T</span>
+                                </div>
+                              )}
+                              {!gear && (isEngine || isWheel) && (
+                                <div className={`w-1.5 h-1.5 rounded-full ${isEngine ? 'bg-blue-500' : 'bg-green-500'} opacity-30`} />
+                              )}
+                            </button>
 
-                <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+                            {/* Selection logic (keep as is) */}
+                            <AnimatePresence>
+                              {selectedGearId === gear?.id && (
+                                <motion.div 
+                                  initial={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
+                                  className={`absolute z-[500] ${y < 2 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-neutral-900 border border-white/20 rounded-2xl p-4 shadow-2xl min-w-[200px]`}
+                                >
+                                  <div className="flex justify-between items-center mb-3">
+                                    <p className="text-[10px] font-black text-white/40 uppercase tracking-widest italic">Tooth Count</p>
+                                    <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedGearId(null)} />
+                                  </div>
+                                  <div className="grid grid-cols-4 gap-1.5">
+                                    {GEAR_TYPES.map(t => (
+                                      <button
+                                        key={t}
+                                        onClick={(e) => { e.stopPropagation(); setTeeth(gear.id, t); }}
+                                        className={`px-1 py-2 rounded-lg text-[10px] font-black transition-all ${
+                                          gear.teeth === t ? 'bg-rose-600 text-white scale-110' : 'bg-white/5 hover:bg-white/10 text-white/60'
+                                        }`}
+                                      >
+                                        {t}T
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="mt-4 pt-3 border-t border-white/10">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); removeGear(gear.id); setSelectedGearId(null); }}
+                                      className="w-full py-2 text-[10px] font-black text-red-500 hover:bg-red-500/10 rounded-lg transition-all uppercase italic"
+                                    >
+                                      Detach Gear
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                      </div>
+                    </div>
+
+                    <WheelVisual className="shrink-0" />
+                  </div>
+
+                  <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                      <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Gear Ratio</p>
+                      <p className="text-2xl font-mono font-black text-rose-500">{gearRatio.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                      <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Efficiency</p>
+                      <p className="text-2xl font-mono font-black text-green-400">{(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%</p>
+                    </div>
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10 col-span-2 flex items-center gap-4">
+                      <div className="flex-1">
+                        <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Setup Presets</p>
+                        <div className="flex gap-2">
+                           {presets.map((p, idx) => (
+                              <button key={idx} onClick={() => setGears(p.gears)} className="px-3 py-1 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-black uppercase">
+                                {p.name}
+                              </button>
+                           ))}
+                           <button onClick={() => {const n=prompt('Preset name:'); if(n) setPresets([...presets, {name:n, gears:[...gears]}])}} className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase">Save</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex gap-4 items-start bg-rose-500/5 border border-rose-500/20 p-4 rounded-2xl">
+                    <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
+                    <p className="text-xs text-rose-200/60 leading-relaxed italic">
+                      Tip: Connect <span className="text-blue-400 font-bold">Engine</span> to <span className="text-green-400 font-bold">Wheel</span>. Use <span className="text-rose-400 font-bold">large gears</span> for torque, <span className="text-blue-400 font-bold">small gears</span> for speed.
+                    </p>
+                  </div>
+
                   <button 
-                    onClick={() => {
-                      const name = prompt('Enter preset name:');
-                      if (name) setPresets([...presets, { name, gears: [...gears] }]);
-                    }}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[10px] font-bold uppercase shrink-0 transition-colors"
+                    onClick={() => setIsGarageOpen(false)}
+                    className="w-full mt-8 bg-white/5 hover:bg-white/10 border border-white/10 py-4 rounded-2xl font-black text-rose-500 uppercase tracking-widest italic transition-all active:scale-95 flex items-center justify-center gap-2 group"
                   >
-                    Save Preset
+                    <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+                    Back to Race Track
                   </button>
-                  {presets.map((p, idx) => (
-                    <button 
-                      key={idx}
-                      onClick={() => setGears(p.gears)}
-                      className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-600/30 rounded-lg text-[10px] font-bold uppercase shrink-0 transition-colors text-rose-400"
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 flex gap-3 items-start">
-                <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
-                <div className="space-y-2">
-                  <p className="text-sm text-rose-200/80 leading-relaxed">
-                    Connect gears from the <span className="text-blue-400 font-bold">Engine (Left)</span> to the <span className="text-green-400 font-bold">Wheel (Right)</span>. 
-                  </p>
-                  <p className="text-xs text-rose-200/60 leading-relaxed italic">
-                    Tip: Use <span className="font-bold text-rose-400">Large Gears</span> on the right (Wheel) for more climbing power (Torque). Use <span className="font-bold text-blue-400">Small Gears</span> on the right for more speed.
-                  </p>
                 </div>
               </div>
             </motion.div>
