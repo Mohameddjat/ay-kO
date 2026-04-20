@@ -484,6 +484,20 @@ export default function App() {
           winReason: null
         });
       }
+      
+      // Ensure player exists in room to show up in other people's lobbies
+      await setDoc(doc(db, 'rooms', roomId, 'players', myUid), {
+        id: myUid,
+        isReady: isWaitingRef.current, // Keep true if they already clicked ready
+        progress: 0,
+        x: 0,
+        y: 0,
+        temp: 20,
+        brakeTemp: 20,
+        isExploded: false,
+        lastUpdate: serverTimestamp()
+      }, { merge: true });
+
       setConnectionStatus('connected');
     };
     initRoom();
