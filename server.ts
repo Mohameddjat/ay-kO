@@ -26,11 +26,12 @@ async function startServer() {
     console.log("User connected:", socket.id);
 
     socket.on("join-room", (roomId) => {
-      socket.join(roomId);
-      if (!rooms[roomId]) {
-        rooms[roomId] = { players: {}, status: 'waiting' };
+      const cleanRoomId = roomId.toString().toUpperCase().trim();
+      socket.join(cleanRoomId);
+      if (!rooms[cleanRoomId]) {
+        rooms[cleanRoomId] = { players: {}, status: 'waiting' };
       }
-      rooms[roomId].players[socket.id] = {
+      rooms[cleanRoomId].players[socket.id] = {
         id: socket.id,
         x: 0,
         y: 0,
@@ -42,42 +43,48 @@ async function startServer() {
         isExploded: false
       };
       
-      const playerCount = Object.keys(rooms[roomId].players).length;
-      console.log(`Room ${roomId}: ${playerCount} players`);
+      const playerCount = Object.keys(rooms[cleanRoomId].players).length;
+      console.log(`[JOIN] Socket ${socket.id} joined room ${cleanRoomId}. Total: ${playerCount}`);
 
-      if (playerCount >= 2 && rooms[roomId].status === 'waiting') {
-        rooms[roomId].status = 'racing';
-        io.to(roomId).emit("start-race");
+      // Send greeting to the new player with their assigned ID
+      socket.emit("init-success", { id: socket.id, roomId: cleanRoomId });
+
+      if (playerCount >= 2 && rooms[cleanRoomId].status === 'waiting') {
+        rooms[cleanRoomId].status = 'racing';
+        io.to(cleanRoomId).emit("start-race");
+        console.log(`[START] Race started in room ${cleanRoomId}`);
       }
 
-      io.to(roomId).emit("room-state", rooms[roomId]);
+      io.to(cleanRoomId).emit("room-state", rooms[cleanRoomId]);
     });
 
     socket.on("player-lost", ({ roomId }) => {
-      if (rooms[roomId] && rooms[roomId].status === 'racing') {
-        rooms[roomId].status = 'finished';
-        const remainingPlayers = Object.keys(rooms[roomId].players).filter(id => id !== socket.id);
+      const cleanRoomId = roomId.toString().toUpperCase().trim();
+      if (rooms[cleanRoomId] && rooms[cleanRoomId].status === 'racing') {
+        rooms[cleanRoomId].status = 'finished';
+        const remainingPlayers = Object.keys(rooms[cleanRoomId].players).filter(id => id !== socket.id);
         if (remainingPlayers.length > 0) {
-          io.to(roomId).emit("game-over", { winnerId: remainingPlayers[0], reason: 'opponent exploded' });
+          io.to(cleanRoomId).emit("game-over", { winnerId: remainingPlayers[0], reason: 'opponent exploded' });
         }
       }
     });
 
     socket.on("player-finished", ({ roomId }) => {
-      if (rooms[roomId] && rooms[roomId].status === 'racing') {
-        rooms[roomId].status = 'finished';
-        io.to(roomId).emit("game-over", { winnerId: socket.id, reason: 'crossed finish line' });
+      const cleanRoomId = roomId.toString().toUpperCase().trim();
+      if (rooms[cleanRoomId] && rooms[cleanRoomId].status === 'racing') {
+        rooms[cleanRoomId].status = 'finished';
+        io.to(cleanRoomId).emit("game-over", { winnerId: socket.id, reason: 'crossed finish line' });
       }
     });
 
     socket.on("update-state", ({ roomId, state }) => {
-      if (rooms[roomId] && rooms[roomId].players[socket.id]) {
-        rooms[roomId].players[socket.id] = {
-          ...rooms[roomId].players[socket.id],
+      const cleanRoomId = roomId.toString().toUpperCase().trim();
+      if (rooms[cleanRoomId] && rooms[cleanRoomId].players[socket.id]) {
+        rooms[cleanRoomId].players[socket.id] = {
+          ...rooms[cleanRoomId].players[socket.id],
           ...state,
         };
-        // Use io.to(roomId) instead of socket.to(roomId) for more reliable sync
-        io.to(roomId).emit("player-updated", rooms[roomId].players[socket.id]);
+        io.to(cleanRoomId).emit("player-updated", rooms[cleanRoomId].players[socket.id]);
       }
     });
 

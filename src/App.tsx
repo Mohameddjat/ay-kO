@@ -183,6 +183,8 @@ const WheelVisual = ({ className }: { className?: string }) => (
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [socketId, setSocketId] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [roomId, setRoomId] = useState('main-race');
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [otherPlayers, setOtherPlayers] = useState<Record<string, PlayerState>>({});
@@ -328,31 +330,57 @@ export default function App() {
     if (gameMode !== 'multi') {
       if (socket) socket.disconnect();
       setSocket(null);
+      setSocketId(null);
+      setConnectionStatus('disconnected');
       setOtherPlayers({});
       return;
     }
 
-    const newSocket = io();
+    console.log(`Connecting to socket... Room: ${roomId}`);
+    setConnectionStatus('connecting');
+    
+    // Explicitly connect to origin
+    const newSocket = io(window.location.origin);
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
+      console.log(`Socket connected: ${newSocket.id}`);
+      setConnectionStatus('connected');
       newSocket.emit('join-room', roomId);
     });
 
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setConnectionStatus('disconnected');
+    });
+
+    newSocket.on('init-success', ({ id }) => {
+      console.log(`Initialized with ID: ${id}`);
+      setSocketId(id);
+    });
+
     newSocket.on('room-state', (room: GameRoom) => {
-      const myState = room.players[newSocket.id!];
+      console.log('Received room state:', room);
+      // Use the ID from init-success or current socket instance
+      const currentId = newSocket.id;
+      if (!currentId) return;
+
+      const myState = room.players[currentId];
       if (myState) setPlayerState(myState);
       
       const others = { ...room.players };
-      delete others[newSocket.id!];
+      delete others[currentId];
       setOtherPlayers(others);
     });
 
     newSocket.on('player-updated', (player: PlayerState) => {
+      // Don't update self from server to avoid jitter
+      if (player.id === newSocket.id) return;
       setOtherPlayers(prev => ({ ...prev, [player.id]: player }));
     });
 
     newSocket.on('start-race', () => {
+      console.log('Race starting via socket signal');
       setIsWaiting(false);
       setGameState('racing');
       setMultiplayerWinner(null);
@@ -372,6 +400,7 @@ export default function App() {
     });
 
     return () => {
+      console.log('Cleaning up socket...');
       newSocket.disconnect();
     };
   }, [roomId, gameMode]);
@@ -1354,11 +1383,19 @@ export default function App() {
                             {gameMode === 'multi' && <> | Sector: <span className="text-white uppercase font-black text-rose-400">{roomId}</span></>}
                           </p>
                           {gameMode === 'multi' && (
-                            <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full self-center">
-                              <Users className="w-3 h-3 text-rose-400" />
-                              <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">
-                                {Object.keys(otherPlayers).length + 1} Player(s) in Sector
-                              </span>
+                            <div className="flex flex-col gap-2 items-center">
+                              <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full">
+                                <Users className="w-3 h-3 text-rose-400" />
+                                <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">
+                                  {Object.keys(otherPlayers).length + 1} Player(s) in Sector
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' : connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'}`} />
+                                <span className="text-[8px] font-bold text-white/40 uppercase tracking-widest">
+                                  Neural Link: {connectionStatus}
+                                </span>
+                              </div>
                             </div>
                           )}
                         </div>
