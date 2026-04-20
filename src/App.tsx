@@ -384,11 +384,11 @@ export default function App() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       
-      if (data.status === 'racing' && gameState === 'setup') {
+      if (data.status === 'racing' && (gameState === 'setup' || isWaiting)) {
         setIsWaiting(false);
         setGameState('racing');
         setMultiplayerWinner(null);
-      } else if (data.status === 'finished') {
+      } else if (data.status === 'finished' && gameState === 'racing') {
         setGameState('finished');
         if (data.winnerId) {
           setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
@@ -1119,25 +1119,48 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="h-screen w-full flex flex-col relative overflow-hidden bg-black">
+      <main className="h-screen w-full flex flex-col relative overflow-hidden bg-gradient-to-b from-blue-950 via-blue-900 to-[#111]">
         {/* Race View - Full Screen Container */}
         <div className="flex-1 relative overflow-hidden flex flex-col">
           <div className="flex-1 relative bg-[#111111] overflow-hidden flex flex-col">
             {/* Header Overlay */}
-            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-40 bg-gradient-to-b from-black/80 to-transparent">
-              <div className="flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-yellow-500" />
-                <h2 className="text-sm font-black uppercase tracking-tighter italic">Live Race</h2>
+            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-40 bg-gradient-to-b from-black/80 to-transparent">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-yellow-500" />
+                  <h2 className="text-sm font-black uppercase tracking-tighter italic">Live Race</h2>
+                </div>
+                
+                {/* HUD: Comp Stats - Moved to Top Left */}
+                <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex">
+                  <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 w-48 shadow-xl">
+                    <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-2 flex items-center justify-between">
+                      <span>Competitors</span>
+                      <Users className="w-2 h-2 text-rose-500" />
+                    </p>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-rose-500">YOU</span>
+                        <div className="flex-1 mx-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-rose-500" style={{ width: `${(distance / TRACK_LENGTH) * 100}%` }} />
+                        </div>
+                        <span className="text-[10px] font-mono text-white/40">{Math.floor((distance / TRACK_LENGTH) * 100)}%</span>
+                      </div>
+                      {Object.values(otherPlayers).slice(0, 3).map((p: any) => (
+                        <div key={p.id} className="flex items-center justify-between opacity-60">
+                          <span className="text-[10px] font-bold text-blue-400">P-{p.id.slice(0, 2)}</span>
+                          <div className="flex-1 mx-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-400" style={{ width: `${p.progress * 100}%` }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-white/40">{Math.floor(p.progress * 100)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
+
               <div className="flex gap-4 items-center">
-                <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
-                  <Thermometer className={`w-3 h-3 ${engineTemp > 70 ? 'text-red-500 animate-pulse' : 'text-blue-400'}`} />
-                  <span className="text-xs font-mono font-bold">{engineTemp.toFixed(1)}°C</span>
-                </div>
-                <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
-                  <Zap className="w-3 h-3 text-yellow-400" />
-                  <span className="text-xs font-mono font-bold">{(gearRatio * 10).toFixed(0)} Nm</span>
-                </div>
                 <button 
                   onClick={() => setIsGarageOpen(!isGarageOpen)}
                   className={`p-2 rounded-full transition-all border ${isGarageOpen ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
@@ -1154,6 +1177,7 @@ export default function App() {
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
                       setIsWaiting(false);
+                      setMultiplayerWinner(null);
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
@@ -1248,32 +1272,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* HUD: Comp Stats & Thermal Overlay */}
-              <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex absolute bottom-32 right-72">
-                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 w-48 shadow-xl">
-                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-2 flex items-center justify-between">
-                    <span>Competitors</span>
-                    <Users className="w-2 h-2 text-rose-500" />
-                  </p>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-rose-500">YOU</span>
-                      <div className="flex-1 mx-2 h-1 bg-white/5 rounded-full overflow-hidden">
-                        <div className="h-full bg-rose-500" style={{ width: `${(distance / TRACK_LENGTH) * 100}%` }} />
-                      </div>
-                      <span className="text-[10px] font-mono text-white/40">{Math.floor((distance / TRACK_LENGTH) * 100)}%</span>
-                    </div>
-                    {Object.values(otherPlayers).slice(0, 3).map((p: any) => (
-                      <div key={p.id} className="flex items-center justify-between opacity-60">
-                        <span className="text-[10px] font-bold text-blue-400">P-{p.id.slice(0, 2)}</span>
-                        <div className="flex-1 mx-2 h-1 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-400" style={{ width: `${p.progress * 100}%` }} />
-                        </div>
-                        <span className="text-[10px] font-mono text-white/40">{Math.floor(p.progress * 100)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1337,20 +1335,28 @@ export default function App() {
                 <div className="absolute inset-0 pointer-events-none z-20 shadow-[inset_0_0_150px_rgba(0,0,0,0.7)]" />
               </div>
 
-              {/* Progress Bar */}
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 w-64 h-12 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 flex items-center px-2">
+              {/* Progress Bar - Moved to Bottom edge for better visibility and no header overlap */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-full max-w-md h-8 bg-black/60 backdrop-blur-md border border-white/10 rounded-full overflow-hidden pointer-events-none z-40">
+                <div className="absolute inset-x-4 inset-y-0 flex items-center">
                   <div className="w-full h-[2px] bg-white/10 relative">
                     {/* Finish Line */}
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-yellow-500" />
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-3 bg-yellow-500" />
                     {/* Player Dot */}
                     <motion.div 
-                      className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-rose-500 rounded-full shadow-[0_0_10px_rgba(244,63,94,0.8)] border-2 border-white"
+                      className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-rose-500 rounded-full shadow-[0_0_10px_rgba(244,63,94,0.8)] border border-white"
                       animate={{ left: `${(distance / TRACK_LENGTH) * 100}%` }}
                     />
+                    {/* Rival Dots */}
+                    {(Object.values(otherPlayers) as PlayerState[]).map(p => (
+                      <motion.div 
+                        key={p.id}
+                        className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-blue-400 rounded-full shadow-[0_0_5px_rgba(96,165,250,0.5)] border border-white/50"
+                        animate={{ left: `${p.progress * 100}%` }}
+                      />
+                    ))}
                   </div>
                 </div>
-                <div className="absolute bottom-1 left-2 text-[6px] font-black text-white/40 uppercase tracking-widest">Progress</div>
+                <div className="absolute bottom-0.5 right-4 text-[5px] font-black text-white/20 uppercase tracking-widest">Sector Completion</div>
               </div>
             </div>
 
@@ -1603,28 +1609,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Progress Bar */}
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-[10px] font-mono text-white/40 uppercase tracking-widest">
-                <span>Start</span>
-                <span>Finish</span>
-              </div>
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
-                <motion.div 
-                  className="h-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(distance / TRACK_LENGTH) * 100}%` }}
-                />
-                {(Object.values(otherPlayers) as PlayerState[]).map(p => (
-                  <motion.div 
-                    key={p.id}
-                    className="absolute top-0 h-full w-1 bg-blue-400"
-                    style={{ left: `${p.progress * 100}%` }}
-                  />
-                ))}
-              </div>
-            </div>
-
+            {/* Result Overlays */}
             <AnimatePresence>
               {gameState === 'exploded' && (
                 <motion.div 
@@ -1651,6 +1636,7 @@ export default function App() {
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
                       setIsWaiting(false);
+                      setMultiplayerWinner(null);
                       setGameState('setup');
                       setEngineTemp(20);
                       setGameMode(null);
@@ -1702,6 +1688,7 @@ export default function App() {
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
                       setIsWaiting(false);
+                      setMultiplayerWinner(null);
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
@@ -1718,44 +1705,7 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-      {/* Competitors Overlay (Always visible during race) */}
-      {gameState === 'racing' && !isGarageOpen && (
-        <div className="absolute bottom-32 left-4 md:left-6 z-30 pointer-events-none hidden md:block">
-          <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 w-48 shadow-2xl">
-            <h3 className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-3 italic">Live Rankings</h3>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
-                <div className="flex-1">
-                   <div className="flex justify-between text-[8px] font-black text-white/40 uppercase mb-1">
-                      <span>YOU</span>
-                      <span>{Math.floor((distance / TRACK_LENGTH) * 100)}%</span>
-                   </div>
-                   <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div className="h-full bg-rose-500" animate={{ width: `${(distance / TRACK_LENGTH) * 100}%` }} />
-                   </div>
-                </div>
-              </div>
-              {Object.values(otherPlayers).slice(0, 3).map((p: any) => (
-                <div key={p.id} className="flex items-center gap-3 opacity-40">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                  <div className="flex-1">
-                     <div className="flex justify-between text-[8px] font-black text-white/40 uppercase mb-1">
-                        <span>P-{p.id.slice(0, 2)}</span>
-                        <span>{Math.floor(p.progress * 100)}%</span>
-                     </div>
-                     <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-400" style={{ width: `${p.progress * 100}%` }} />
-                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-               {/* Garage Overlay */}
+        {/* Garage Overlay */}
         <AnimatePresence>
           {isGarageOpen && (
             <motion.div 
