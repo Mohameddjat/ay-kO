@@ -50,43 +50,10 @@ class SoundManager {
   private ctx: AudioContext | null = null;
   private engineOsc: OscillatorNode | null = null;
   private engineGain: GainNode | null = null;
-  private bgmGain: GainNode | null = null;
 
   init() {
     if (this.ctx) return;
     this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  }
-
-  playBackgroundMusic() {
-    if (!this.ctx || this.bgmGain) return;
-    this.bgmGain = this.ctx.createGain();
-    this.bgmGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
-    
-    // Create a rhythmic loop (simple synth bassline)
-    const playNote = (time: number, freq: number, duration: number) => {
-      if (!this.ctx || !this.bgmGain) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(freq, time);
-      gain.gain.setValueAtTime(0.05, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
-      osc.connect(gain);
-      gain.connect(this.bgmGain);
-      osc.start(time);
-      osc.stop(time + duration);
-    };
-
-    const loop = () => {
-      const now = this.ctx!.currentTime;
-      for (let i = 0; i < 8; i++) {
-        playNote(now + i * 0.25, 40, 0.1);
-        if (i % 2 === 0) playNote(now + i * 0.25 + 0.125, 60, 0.1);
-      }
-      setTimeout(loop, 2000);
-    };
-    loop();
-    this.bgmGain.connect(this.ctx.destination);
   }
 
   playClick() {
@@ -416,8 +383,6 @@ export default function App() {
     { id: 'super_cooler', name: 'Super Cooler', description: 'Reduces engine heat generation by 40%.', price: 300, icon: <Zap className="w-5 h-5" /> },
     { id: 'nitro_system', name: 'Nitro System', description: 'Increases base torque by 25%.', price: 450, icon: <Flame className="w-5 h-5" /> },
     { id: 'aero_chassis', name: 'Aero Chassis', description: 'Reduces air resistance at high speeds.', price: 600, icon: <Wind className="w-5 h-5" /> },
-    { id: 'skin_chrome', name: 'Chrome Skin', description: 'Give your machine a sleek metallic look.', price: 800, icon: <Paintbrush className="w-5 h-5" /> },
-    { id: 'skin_fire', name: 'Fire Decal', description: 'Show your speed with custom flame decals.', price: 1000, icon: <Flame className="w-5 h-5" /> },
   ];
 
   const hasUpgrade = (id: string) => upgrades.some(u => u.id === id);
@@ -460,17 +425,16 @@ export default function App() {
     if (gameMode !== 'multi' || multiRoomConfirmed) return;
     const roomsQuery = query(
       collection(db, 'rooms'),
-      orderBy('createdAt', 'desc'),
-      limit(50)
+      where('status', '==', 'waiting'),
+      limit(20)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
-      const oneHourAgo = Date.now() - 3600000;
-      const rooms = snapshot.docs
-        .filter(doc => doc.data().status === 'waiting' && (doc.data().createdAt?.toMillis() || Date.now()) > oneHourAgo)
-        .map(doc => ({ 
-          id: doc.id, 
-          createdAt: doc.data().createdAt?.toMillis() || Date.now() 
-        }));
+      const rooms = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        createdAt: doc.data().createdAt?.toMillis() || Date.now() 
+      }));
+      // Sort locally to avoid needing complex composite indexes
+      rooms.sort((a, b) => b.createdAt - a.createdAt);
       setAvailableRooms(rooms);
     });
     return () => unsubscribe();
@@ -559,13 +523,7 @@ export default function App() {
 
     // Cleanup my player entry on disconnect/leave
     const handleUnload = () => {
-      deleteDoc(doc(db, 'rooms', roomId, 'players', myUid)).then(() => {
-        getDocs(collection(db, 'rooms', roomId, 'players')).then(snap => {
-          if (snap.empty) {
-            deleteDoc(doc(db, 'rooms', roomId)).catch(console.error);
-          }
-        }).catch(console.error);
-      }).catch(console.error);
+      deleteDoc(doc(db, 'rooms', roomId, 'players', myUid));
     };
     window.addEventListener('beforeunload', handleUnload);
 
@@ -791,7 +749,7 @@ export default function App() {
           id: Math.random().toString(36).substr(2, 9),
           lane: Math.floor(Math.random() * 3) - 1,
           z: localDistance + 2500,
-          type: Math.random() > 0.5 ? 'truck' : 'motorcycle'
+          type: Math.random() > 0.5 ? 'crate' : 'barrier'
         });
         nextObstacleZRef.current = localDistance + 400 + Math.random() * 600;
       }
@@ -966,97 +924,15 @@ export default function App() {
         const scale = 800 / (relZ + 800); // Increased perspective constant for "further" feel
         const x = getX(obs.lane, scale);
         const y = horizon + (h - horizon) * scale;
-        
-        ctx.save();
+        const size = 60 * scale; 
+
+        ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
         if (localBoostTimer > 0) {
           ctx.shadowColor = '#fbbf24';
           ctx.shadowBlur = 20;
         }
-
-        if (obs.type === 'truck') {
-          // Draw Truck (Back view)
-          const width = 100 * scale;
-          const height = 110 * scale;
-          const ty = y - height;
-          
-          // Truck Body
-          ctx.fillStyle = '#cbd5e1'; // Light grey/white
-          ctx.beginPath();
-          ctx.roundRect(x - width/2, ty, width, height - 15 * scale, 4 * scale);
-          ctx.fill();
-          
-          // Rear door frames
-          ctx.strokeStyle = '#94a3b8';
-          ctx.lineWidth = 2 * scale;
-          ctx.strokeRect(x - width/2 + 5 * scale, ty + 5 * scale, width - 10 * scale, height - 25 * scale);
-          ctx.beginPath();
-          ctx.moveTo(x, ty + 5 * scale);
-          ctx.lineTo(x, ty + height - 20 * scale);
-          ctx.stroke();
-          
-          // Tail lights
-          ctx.fillStyle = '#ef4444';
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = '#ef4444';
-          ctx.fillRect(x - width/2 + 5 * scale, ty + height - 25 * scale, 15 * scale, 6 * scale);
-          ctx.fillRect(x + width/2 - 20 * scale, ty + height - 25 * scale, 15 * scale, 6 * scale);
-          ctx.shadowBlur = 0;
-          
-          // Tires
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(x - width/2 - 5 * scale, ty + height - 20 * scale, 15 * scale, 20 * scale);
-          ctx.fillRect(x + width/2 - 10 * scale, ty + height - 20 * scale, 15 * scale, 20 * scale);
-          
-          // Mudguards
-          ctx.fillStyle = '#334155';
-          ctx.fillRect(x - width/2 - 10 * scale, ty + height - 20 * scale, 25 * scale, 5 * scale);
-          ctx.fillRect(x + width/2 - 15 * scale, ty + height - 20 * scale, 25 * scale, 5 * scale);
-          
-          // Bottom bumper
-          ctx.fillStyle = '#475569';
-          ctx.fillRect(x - width/2 + 5 * scale, ty + height - 20 * scale, width - 10 * scale, 8 * scale);
-        } else {
-          // Draw Motorcycle (Back view)
-          const width = 30 * scale;
-          const height = 60 * scale;
-          const ty = y - height;
-          
-          // Rider body (Leather jacket)
-          ctx.fillStyle = '#1e293b'; 
-          ctx.beginPath();
-          ctx.ellipse(x, ty + height/2.2, width/1.5, height/3, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Rider helmet
-          ctx.fillStyle = '#ef4444'; // Red helmet
-          ctx.beginPath();
-          ctx.arc(x, ty + height/4, 16 * scale, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Helmet visor
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(x - 8 * scale, ty + height/4 - 2 * scale, 16 * scale, 4 * scale);
-
-          // Rear wheel housing / bike body
-          ctx.fillStyle = '#334155';
-          ctx.beginPath();
-          ctx.roundRect(x - width/2, ty + height/1.5, width, height/3, 4 * scale);
-          ctx.fill();
-
-          // Tail light
-          ctx.fillStyle = '#ef4444';
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = '#ef4444';
-          ctx.fillRect(x - 6 * scale, ty + height/1.4, 12 * scale, 4 * scale);
-          ctx.shadowBlur = 0;
-
-          // Back Tire
-          ctx.fillStyle = '#0f172a';
-          ctx.roundRect(x - 6 * scale, ty + height - 10 * scale, 12 * scale, 15 * scale, 2 * scale);
-          ctx.fill();
-        }
-
-        ctx.restore();
+        ctx.fillRect(x - size/2, y - size, size, size);
+        ctx.shadowBlur = 0;
       });
 
       // Draw Other Players (Ghosts)
@@ -1174,9 +1050,8 @@ export default function App() {
   }, [gameState, canvasSize, gearRatio]);
 
   const addGear = (x: number, y: number) => {
-      sounds.init();
-      sounds.playBackgroundMusic();
-      sounds.playClick();
+    sounds.init();
+    sounds.playClick();
     const id = `${x}-${y}`;
     const existingGear = gears.find(g => g.id === id);
     if (existingGear) {
@@ -1332,7 +1207,7 @@ export default function App() {
                     </div>
                     <div>
                       <h3 className="font-bold mb-1">2. Avoid Obstacles</h3>
-                      <p className="text-sm text-white/60 leading-relaxed">Watch out for trucks and motorcycles on the road. Hitting them at high speed will damage your engine!</p>
+                      <p className="text-sm text-white/60 leading-relaxed">Watch out for crates, bumps, and ramps. Hitting obstacles at high speed will damage your engine!</p>
                     </div>
                   </div>
                 </div>
@@ -1410,15 +1285,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
-              {/* Shopping Cart Button */}
-              <button 
-                onClick={() => setGameState('shop')}
-                className="bg-rose-600 p-3 rounded-xl shadow-lg shadow-rose-600/30 border border-rose-400 hover:bg-rose-500 transition-all active:scale-90"
-              >
-                <ShoppingCart className="w-5 h-5 text-white" />
-              </button>
-            </div>
 
               <div className="flex gap-4 items-center">
                 <button 
@@ -2286,7 +2152,6 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-
       </main>
 
       <style>{`
