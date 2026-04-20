@@ -749,7 +749,7 @@ export default function App() {
           id: Math.random().toString(36).substr(2, 9),
           lane: Math.floor(Math.random() * 3) - 1,
           z: localDistance + 2500,
-          type: Math.random() > 0.5 ? 'crate' : 'barrier'
+          type: Math.random() > 0.5 ? 'truck' : 'bike'
         });
         nextObstacleZRef.current = localDistance + 400 + Math.random() * 600;
       }
@@ -926,13 +926,34 @@ export default function App() {
         const y = horizon + (h - horizon) * scale;
         const size = 60 * scale; 
 
-        ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
-        if (localBoostTimer > 0) {
-          ctx.shadowColor = '#fbbf24';
-          ctx.shadowBlur = 20;
+        if (obs.type === 'truck') {
+          // Draw Truck
+          ctx.fillStyle = '#1e293b'; // Cab color
+          ctx.fillRect(x - size/2, y - size, size * 0.4, size);
+          ctx.fillStyle = '#475569'; // Trailer color
+          ctx.fillRect(x - size/2 + size * 0.4, y - size * 0.9, size * 0.6, size * 0.9);
+          // Windows
+          ctx.fillStyle = '#60a5fa';
+          ctx.fillRect(x - size/2 + 2, y - size + 2, size * 0.2, size * 0.3);
+          // Wheels
+          ctx.fillStyle = '#000';
+          ctx.fillRect(x - size/2, y - size * 0.1, size * 0.1, size * 0.1);
+          ctx.fillRect(x - size/2 + size * 0.3, y - size * 0.1, size * 0.1, size * 0.1);
+          ctx.fillRect(x - size/2 + size * 0.6, y - size * 0.1, size * 0.1, size * 0.1);
+          ctx.fillRect(x - size/2 + size * 0.9, y - size * 0.1, size * 0.1, size * 0.1);
+        } else {
+          // Draw Bike
+          ctx.fillStyle = '#e11d48';
+          const bikeW = size * 0.3;
+          const bikeH = size * 0.6;
+          ctx.fillRect(x - bikeW/2, y - bikeH, bikeW, bikeH);
+          // Wheels
+          ctx.beginPath();
+          ctx.fillStyle = '#000';
+          ctx.arc(x, y - bikeH * 0.1, bikeW * 0.4, 0, Math.PI * 2);
+          ctx.arc(x, y - bikeH * 0.9, bikeW * 0.4, 0, Math.PI * 2);
+          ctx.fill();
         }
-        ctx.fillRect(x - size/2, y - size, size, size);
-        ctx.shadowBlur = 0;
       });
 
       // Draw Other Players (Ghosts)
@@ -1207,7 +1228,7 @@ export default function App() {
                     </div>
                     <div>
                       <h3 className="font-bold mb-1">2. Avoid Obstacles</h3>
-                      <p className="text-sm text-white/60 leading-relaxed">Watch out for crates, bumps, and ramps. Hitting obstacles at high speed will damage your engine!</p>
+                      <p className="text-sm text-white/60 leading-relaxed">Watch out for trucks, bikes, and other debris. Hitting obstacles at high speed will damage your engine!</p>
                     </div>
                   </div>
                 </div>
@@ -1503,12 +1524,22 @@ export default function App() {
                 <div className="max-w-xl w-full flex flex-col gap-8 items-center text-center">
                   {!gameMode ? (
                     <>
-                      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl">
-                        <Coins className="w-5 h-5 text-yellow-500 animate-pulse" />
-                        <div className="flex flex-col items-start leading-none">
-                          <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Available Credits</span>
-                          <span className="text-xl font-mono font-black text-white">{credits.toLocaleString()}</span>
+                      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl">
+                        <div className="flex items-center gap-3">
+                          <Coins className="w-5 h-5 text-yellow-500 animate-pulse" />
+                          <div className="flex flex-col items-start leading-none">
+                            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Available Credits</span>
+                            <span className="text-xl font-mono font-black text-white">{credits.toLocaleString()}</span>
+                          </div>
                         </div>
+                        <div className="w-[1px] h-8 bg-white/10" />
+                        <button 
+                          onClick={() => setGameState('shop')}
+                          className="flex flex-col items-center group"
+                        >
+                          <ShoppingCart className="w-6 h-6 text-rose-500 group-hover:scale-110 transition-transform" />
+                          <span className="text-[8px] font-black uppercase text-white/40 group-hover:text-white transition-colors">Shop</span>
+                        </button>
                       </div>
 
                       <div className="space-y-2">
