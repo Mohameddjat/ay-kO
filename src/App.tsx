@@ -209,6 +209,9 @@ export default function App() {
     localStorage.setItem('gear_race_gears', JSON.stringify(gears));
   }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
+  const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
+  const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
+  const [joinIdInput, setJoinIdInput] = useState('');
   const [isGarageOpen, setIsGarageOpen] = useState(false);
   const [gearRatio, setGearRatio] = useState(1);
   const [engineTemp, setEngineTemp] = useState(20);
@@ -320,6 +323,13 @@ export default function App() {
 
   // Initialize Socket
   useEffect(() => {
+    if (gameMode !== 'multi') {
+      if (socket) socket.disconnect();
+      setSocket(null);
+      setOtherPlayers({});
+      return;
+    }
+
     const newSocket = io();
     setSocket(newSocket);
 
@@ -351,7 +361,7 @@ export default function App() {
     return () => {
       newSocket.disconnect();
     };
-  }, [roomId]);
+  }, [roomId, gameMode]);
 
   // Gear Connectivity Logic (BFS)
   useEffect(() => {
@@ -1007,31 +1017,52 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Thermal HUD */}
-                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 w-48 shadow-xl space-y-3">
-                   <div>
-                    <div className="flex justify-between text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">
-                      <span>Engine Temp</span>
-                      <span className={engineTemp > 75 ? 'text-rose-500' : 'text-blue-400'}>{engineTemp.toFixed(0)}°C</span>
+                {/* Thermal HUD - Circular Gauges */}
+                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex gap-4 shadow-xl pointer-events-none">
+                  <div className="relative flex flex-col items-center">
+                    <div className="relative w-16 h-16 flex items-center justify-center">
+                      <svg className="w-full h-full -rotate-90">
+                        <circle cx="32" cy="32" r="28" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+                        <motion.circle 
+                          cx="32" cy="32" r="28" fill="transparent" 
+                          stroke={engineTemp > 80 ? '#f43f5e' : engineTemp > 65 ? '#f59e0b' : '#3b82f6'} 
+                          strokeWidth="6" 
+                          strokeDasharray="175.9"
+                          animate={{ strokeDashoffset: 175.9 - (175.9 * (engineTemp / 90)) }}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className={`text-sm font-mono font-black ${engineTemp > 80 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{engineTemp.toFixed(0)}°</span>
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        className={`h-full ${engineTemp > 75 ? 'bg-rose-500' : 'bg-blue-500'}`}
-                        animate={{ width: `${(engineTemp / 90) * 100}%` }}
-                      />
-                    </div>
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
+                      <Thermometer className="w-2 h-2" />
+                      Engine
+                    </span>
                   </div>
-                  <div>
-                    <div className="flex justify-between text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">
-                      <span>Brake Heat</span>
-                      <span className={brakeTemp > 75 ? 'text-orange-500' : 'text-yellow-500'}>{brakeTemp.toFixed(0)}°C</span>
+
+                  <div className="relative flex flex-col items-center">
+                    <div className="relative w-16 h-16 flex items-center justify-center">
+                      <svg className="w-full h-full -rotate-90">
+                        <circle cx="32" cy="32" r="28" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+                        <motion.circle 
+                          cx="32" cy="32" r="28" fill="transparent" 
+                          stroke={brakeTemp > 80 ? '#f43f5e' : brakeTemp > 65 ? '#f59e0b' : '#10b981'} 
+                          strokeWidth="6" 
+                          strokeDasharray="175.9"
+                          animate={{ strokeDashoffset: 175.9 - (175.9 * Math.min(1, brakeTemp / 100)) }}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className={`text-sm font-mono font-black ${brakeTemp > 80 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{brakeTemp.toFixed(0)}°</span>
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        className={`h-full ${brakeTemp > 75 ? 'bg-orange-500' : 'bg-yellow-500'}`}
-                        animate={{ width: `${brakeTemp}%` }}
-                      />
-                    </div>
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
+                      <RotateCcw className="w-2 h-2" />
+                      Brakes
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1090,6 +1121,38 @@ export default function App() {
 
                 {/* Scanline & Vignette */}
                 <div className="absolute inset-0 pointer-events-none z-20 scanline opacity-[0.03]" />
+                
+                {/* Overheat Warning Overlay */}
+                <AnimatePresence>
+                  {(engineTemp > 80 || brakeTemp > 80) && gameState === 'racing' && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 1.2 }}
+                      className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <motion.div 
+                          animate={{ opacity: [1, 0, 1] }}
+                          transition={{ repeat: Infinity, duration: 0.5 }}
+                          className="bg-rose-600/90 text-white px-8 py-4 rounded-3xl border-4 border-white shadow-[0_0_100px_rgba(225,29,72,0.8)]"
+                        >
+                          <div className="flex items-center gap-4">
+                            <AlertTriangle className="w-10 h-10" />
+                            <div className="flex flex-col">
+                              <span className="text-4xl font-black italic tracking-tighter">OVERHEAT WARNING</span>
+                              <span className="text-xs uppercase tracking-widest font-bold opacity-80">Immediate cooling required</span>
+                            </div>
+                          </div>
+                        </motion.div>
+                        <div className="bg-black/80 px-4 py-2 rounded-xl border border-white/20 text-rose-400 font-mono text-sm">
+                          {engineTemp > 80 && `ENGINE: ${engineTemp.toFixed(1)}°C `}
+                          {brakeTemp > 80 && `BRAKES: ${brakeTemp.toFixed(1)}°C`}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <div className="absolute inset-0 pointer-events-none z-20 shadow-[inset_0_0_150px_rgba(0,0,0,0.7)]" />
               </div>
 
@@ -1115,30 +1178,144 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-auto"
+                className="absolute inset-0 z-40 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center pointer-events-auto p-6"
               >
-                <div className="flex flex-col gap-6 items-center">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setGameState('racing')}
-                    className="group relative bg-rose-600 px-16 py-6 rounded-3xl font-black text-3xl italic tracking-tighter text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] border-b-4 border-rose-800 transition-all"
-                  >
-                    <div className="flex items-center gap-4">
-                      <Play className="w-10 h-10 fill-current" />
-                      START MISSION
-                    </div>
-                  </motion.button>
+                <div className="max-w-xl w-full flex flex-col gap-8 items-center text-center">
+                  {!gameMode ? (
+                    <>
+                      <div className="space-y-2">
+                        <h2 className="text-4xl font-black italic tracking-tighter text-white">CHOOSE OPERATIONAL MODE</h2>
+                        <p className="text-white/40 uppercase tracking-widest text-xs font-bold">Select your mission profile</p>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                        <motion.button
+                          whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setGameMode('single')}
+                          className="flex flex-col items-center gap-4 p-8 bg-white/5 border border-white/10 rounded-3xl transition-all group"
+                        >
+                          <div className="w-16 h-16 rounded-2xl bg-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/40 transition-colors">
+                            <Zap className="w-8 h-8 text-blue-400" />
+                          </div>
+                          <div className="text-center">
+                            <h3 className="text-xl font-black italic text-white uppercase">Solo Mission</h3>
+                            <p className="text-[10px] text-white/40 mt-1 uppercase font-bold tracking-wider">Race against the track</p>
+                          </div>
+                        </motion.button>
 
-                  <button
-                    onClick={() => setIsGarageOpen(true)}
-                    className="flex items-center gap-3 bg-white/10 hover:bg-white/20 px-8 py-3 rounded-2xl border border-white/10 backdrop-blur-xl transition-all group"
-                  >
-                    <Settings className="w-5 h-5 text-rose-500 group-hover:animate-spin-slow" />
-                    <span className="text-sm font-black uppercase tracking-widest text-white italic">Open Assembly Garage</span>
-                  </button>
-                  
-                  <p className="text-[10px] text-white/40 uppercase tracking-[0.3em] mt-4 font-black">Prepare for High Velocity</p>
+                        <motion.button
+                          whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setGameMode('multi')}
+                          className="flex flex-col items-center gap-4 p-8 bg-white/5 border border-white/10 rounded-3xl transition-all group"
+                        >
+                          <div className="w-16 h-16 rounded-2xl bg-rose-500/20 flex items-center justify-center group-hover:bg-rose-500/40 transition-colors">
+                            <Users className="w-8 h-8 text-rose-400" />
+                          </div>
+                          <div className="text-center">
+                            <h3 className="text-xl font-black italic text-white uppercase">Network Race</h3>
+                            <p className="text-[10px] text-white/40 mt-1 uppercase font-bold tracking-wider">Compete with global rivals</p>
+                          </div>
+                        </motion.button>
+                      </div>
+                    </>
+                  ) : gameMode === 'multi' && !multiRoomConfirmed ? (
+                    <>
+                       <div className="space-y-2">
+                        <button 
+                          onClick={() => setGameMode(null)}
+                          className="text-[10px] font-black text-rose-500/60 uppercase tracking-widest hover:text-rose-500 transition-colors mb-4"
+                        >
+                          ← Back to mode selection
+                        </button>
+                        <h2 className="text-4xl font-black italic tracking-tighter text-white uppercase">Multiplayer Gateway</h2>
+                        <p className="text-white/40 uppercase tracking-widest text-xs font-bold">Synchronize with the neural net</p>
+                      </div>
+
+                      <div className="flex flex-col gap-4 w-full max-w-sm">
+                        <button
+                          onClick={() => {
+                            const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                            setRoomId(newId);
+                            setMultiRoomConfirmed(true);
+                          }}
+                          className="bg-rose-600 hover:bg-rose-500 px-8 py-5 rounded-2xl font-black text-lg italic tracking-tighter text-white shadow-xl shadow-rose-600/20 transition-all active:scale-95 border-b-4 border-rose-800"
+                        >
+                          CREATE NEW ROOM
+                        </button>
+                        
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
+                          <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Join existing sector</p>
+                          <div className="flex gap-2">
+                            <input 
+                              type="text" 
+                              value={joinIdInput}
+                              onChange={(e) => setJoinIdInput(e.target.value.toUpperCase())}
+                              placeholder="ROOM ID"
+                              className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 flex-1 font-mono text-white placeholder:text-white/20 focus:outline-none focus:border-rose-500/50 transition-all text-sm"
+                            />
+                            <button
+                              onClick={() => {
+                                if (joinIdInput) {
+                                  setRoomId(joinIdInput);
+                                  setMultiRoomConfirmed(true);
+                                }
+                              }}
+                              className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+                            >
+                              JOIN
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-6">
+                        <div className="flex flex-col gap-2">
+                          <button 
+                            onClick={() => {
+                              setGameMode(null);
+                              setMultiRoomConfirmed(false);
+                              setRoomId('main-race');
+                            }}
+                            className="text-[10px] font-black text-rose-500/60 uppercase tracking-widest hover:text-rose-500 transition-colors"
+                          >
+                            ← Back to mode selection
+                          </button>
+                          <h2 className="text-4xl font-black italic tracking-tighter text-white uppercase">Unit Ready</h2>
+                          <p className="text-white/40 uppercase tracking-widest text-[10px] font-bold">
+                            Mode: <span className="text-white">{gameMode === 'multi' ? 'Multiplayer' : 'Solo'}</span>
+                            {gameMode === 'multi' && <> | Sector: <span className="text-white uppercase font-black text-rose-400">{roomId}</span></>}
+                          </p>
+                        </div>
+
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setGameState('racing')}
+                          className="group relative bg-rose-600 px-16 py-6 rounded-3xl font-black text-3xl italic tracking-tighter text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] border-b-4 border-rose-800 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <Play className="w-10 h-10 fill-current" />
+                            ENGINE START
+                          </div>
+                        </motion.button>
+
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={() => setIsGarageOpen(true)}
+                            className="flex items-center gap-3 bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl border border-white/10 backdrop-blur-xl transition-all group"
+                          >
+                            <Settings className="w-4 h-4 text-rose-500 group-hover:animate-spin-slow" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white italic">Open Assembly Garage</span>
+                          </button>
+                          <p className="text-[10px] text-white/20 uppercase tracking-[0.3em] font-black">All systems operational</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </motion.div>
             )}
