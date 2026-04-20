@@ -803,8 +803,8 @@ export default function App() {
       canvas.width = w;
       canvas.height = h;
 
-      const horizon = h * 0.4; // Lower horizon for a more "distant" feel
-      const LANE_WIDTH_BOTTOM = w * 0.4; // Responsive width (40% of canvas)
+      const horizon = h * 0.45; // Adjusted horizon for better perspective on mobile
+      const LANE_WIDTH_BOTTOM = w < 640 ? w * 0.6 : w * 0.4; // Wider road on mobile
       const LANE_WIDTH_HORIZON = w * 0.02; // 2% of canvas at horizon
 
       const getX = (lane: number, s: number) => {
@@ -927,32 +927,75 @@ export default function App() {
         const size = 60 * scale; 
 
         if (obs.type === 'truck') {
-          // Draw Truck
-          ctx.fillStyle = '#1e293b'; // Cab color
-          ctx.fillRect(x - size/2, y - size, size * 0.4, size);
-          ctx.fillStyle = '#475569'; // Trailer color
-          ctx.fillRect(x - size/2 + size * 0.4, y - size * 0.9, size * 0.6, size * 0.9);
-          // Windows
-          ctx.fillStyle = '#60a5fa';
-          ctx.fillRect(x - size/2 + 2, y - size + 2, size * 0.2, size * 0.3);
-          // Wheels
-          ctx.fillStyle = '#000';
-          ctx.fillRect(x - size/2, y - size * 0.1, size * 0.1, size * 0.1);
-          ctx.fillRect(x - size/2 + size * 0.3, y - size * 0.1, size * 0.1, size * 0.1);
-          ctx.fillRect(x - size/2 + size * 0.6, y - size * 0.1, size * 0.1, size * 0.1);
-          ctx.fillRect(x - size/2 + size * 0.9, y - size * 0.1, size * 0.1, size * 0.1);
-        } else {
-          // Draw Bike
-          ctx.fillStyle = '#e11d48';
-          const bikeW = size * 0.3;
-          const bikeH = size * 0.6;
-          ctx.fillRect(x - bikeW/2, y - bikeH, bikeW, bikeH);
-          // Wheels
+          // Draw Truck (Rear View)
+          const truckW = size;
+          const truckH = size * 1.2;
+          
+          // Main Trailer Body
+          ctx.fillStyle = '#475569'; // Grey trailer
           ctx.beginPath();
-          ctx.fillStyle = '#000';
-          ctx.arc(x, y - bikeH * 0.1, bikeW * 0.4, 0, Math.PI * 2);
-          ctx.arc(x, y - bikeH * 0.9, bikeW * 0.4, 0, Math.PI * 2);
+          ctx.roundRect(x - truckW/2, y - truckH, truckW, truckH - size * 0.1, 4 * scale);
           ctx.fill();
+          
+          // Door seams (Rear doors of trailer)
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, y - truckH);
+          ctx.lineTo(x, y - size * 0.1);
+          ctx.stroke();
+          
+          // Tail Lights
+          ctx.fillStyle = '#ef4444'; // Red
+          ctx.shadowBlur = 15 * scale;
+          ctx.shadowColor = '#ef4444';
+          ctx.fillRect(x - truckW/2 + 5 * scale, y - size * 0.3, size * 0.15, size * 0.1);
+          ctx.fillRect(x + truckW/2 - 5 * scale - size * 0.15, y - size * 0.3, size * 0.15, size * 0.1);
+          ctx.shadowBlur = 0;
+          
+          // Wheels (Back wheels peek out)
+          ctx.fillStyle = '#000';
+          ctx.fillRect(x - truckW/2 + 2 * scale, y - size * 0.1, size * 0.2, size * 0.1);
+          ctx.fillRect(x + truckW/2 - 2 * scale - size * 0.2, y - size * 0.1, size * 0.2, size * 0.1);
+          
+          // Bumper
+          ctx.fillStyle = '#1e293b';
+          ctx.fillRect(x - truckW/2 - 2 * scale, y - size * 0.2, truckW + 4 * scale, size * 0.05);
+        } else {
+          // Draw Bike (Rear View)
+          const bikeW = size * 0.4;
+          const bikeH = size * 0.8;
+          
+          // Rear tire
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.roundRect(x - bikeW/6, y - size * 0.2, bikeW/3, size * 0.2, 2 * scale);
+          ctx.fill();
+          
+          // Bike Body/Seat
+          ctx.fillStyle = '#e11d48'; // Red bike
+          ctx.beginPath();
+          ctx.moveTo(x - bikeW/2, y - size * 0.3);
+          ctx.lineTo(x + bikeW/2, y - size * 0.3);
+          ctx.lineTo(x + bikeW/4, y - bikeH);
+          ctx.lineTo(x - bikeW/4, y - bikeH);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Rider Back (Simplified)
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.roundRect(x - bikeW/3, y - bikeH - size * 0.2, (bikeW/3) * 2, size * 0.4, 4 * scale);
+          ctx.fill();
+          
+          // Rear Light
+          ctx.fillStyle = '#ff0000';
+          ctx.shadowBlur = 10 * scale;
+          ctx.shadowColor = '#ff0000';
+          ctx.beginPath();
+          ctx.arc(x, y - size * 0.5, size * 0.05, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
         }
       });
 
@@ -1340,37 +1383,37 @@ export default function App() {
             </div>
 
             {/* Dashboard and Thermal Overlays - Anchored to Corners */}
-            <div className="absolute bottom-32 left-4 z-30 pointer-events-none">
-              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-3 flex gap-12 shadow-xl">
-                <div className="text-center">
-                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                  <p className="text-5xl font-mono font-black text-rose-500 italic">
+            <div className="absolute bottom-36 sm:bottom-32 left-0 right-0 sm:right-auto sm:left-4 z-30 pointer-events-none px-4 sm:px-0">
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 sm:p-3 flex justify-between sm:justify-start gap-2 sm:gap-12 shadow-xl overflow-x-auto">
+                <div className="text-center min-w-[60px]">
+                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
+                  <p className="text-2xl sm:text-5xl font-mono font-black text-rose-500 italic">
                     {(currentSpeed / 10).toFixed(0)}
-                    <span className="text-xs ml-1 opacity-60 text-white">KM/H</span>
+                    <span className="text-[8px] sm:text-xs ml-0.5 opacity-60 text-white">KM/H</span>
                   </p>
                 </div>
-                <div className="w-[1px] bg-white/10" />
-                <div className="text-center">
-                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                  <p className="text-4xl font-mono font-black text-blue-400 italic">
+                <div className="w-[1px] bg-white/10 hidden sm:block" />
+                <div className="text-center min-w-[60px]">
+                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                  <p className="text-xl sm:text-4xl font-mono font-black text-blue-400 italic">
                     {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
                   </p>
                 </div>
-                <div className="w-[1px] bg-white/10" />
-                <div className="text-center">
-                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
-                  <p className="text-4xl font-mono font-black text-amber-500 italic" title="Higher torque = faster acceleration">
+                <div className="w-[1px] bg-white/10 hidden sm:block" />
+                <div className="text-center min-w-[60px]">
+                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
+                  <p className="text-xl sm:text-4xl font-mono font-black text-amber-500 italic">
                     {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
                   </p>
                 </div>
                 {gameMode === 'multi' && Object.values(otherPlayers).length > 0 && (
                   <>
-                    <div className="w-[1px] bg-white/10" />
-                    <div className="text-center">
-                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap</p>
-                      <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                    <div className="w-[1px] bg-white/10 hidden sm:block" />
+                    <div className="text-center min-w-[60px]">
+                      <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap</p>
+                      <p className={`text-xl sm:text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
                         {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
-                          <span className="text-xs ml-1 opacity-40 text-white font-black italic">M</span>
+                          <span className="text-[8px] sm:text-xs ml-0.5 opacity-40 text-white font-black italic">M</span>
                       </p>
                     </div>
                   </>
@@ -1378,9 +1421,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="absolute bottom-32 right-4 z-30 pointer-events-none">
+            <div className="absolute bottom-[220px] sm:bottom-32 right-4 z-30 pointer-events-none">
               {/* Thermal HUD - Circular Gauges */}
-              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex gap-10 shadow-xl">
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row gap-4 sm:gap-10 shadow-xl">
                 <div className="relative flex flex-col items-center">
                   <div className="relative w-16 h-16 flex items-center justify-center">
                     <svg className="w-full h-full -rotate-90">
