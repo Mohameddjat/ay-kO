@@ -209,6 +209,8 @@ export default function App() {
     localStorage.setItem('gear_race_gears', JSON.stringify(gears));
   }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
+  const [multiplayerWinner, setMultiplayerWinner] = useState<{ id: string, reason: string } | null>(null);
+  const [isWaiting, setIsWaiting] = useState(false);
   const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
   const [joinIdInput, setJoinIdInput] = useState('');
@@ -348,6 +350,17 @@ export default function App() {
 
     newSocket.on('player-updated', (player: PlayerState) => {
       setOtherPlayers(prev => ({ ...prev, [player.id]: player }));
+    });
+
+    newSocket.on('start-race', () => {
+      setIsWaiting(false);
+      setGameState('racing');
+      setMultiplayerWinner(null);
+    });
+
+    newSocket.on('game-over', ({ winnerId, reason }: { winnerId: string, reason: string }) => {
+      setGameState('finished');
+      setMultiplayerWinner({ id: winnerId, reason });
     });
 
     newSocket.on('player-left', (id: string) => {
@@ -527,6 +540,17 @@ export default function App() {
 
       if (localEngineTemp >= 90) {
         setGameState('exploded');
+        if (gameMode === 'multi' && socket) {
+          socket.emit('player-lost', { roomId });
+        }
+        return;
+      }
+
+      if (localDistance >= TRACK_LENGTH) {
+        setGameState('finished');
+        if (gameMode === 'multi' && socket) {
+          socket.emit('player-finished', { roomId });
+        }
         return;
       }
 
@@ -680,18 +704,35 @@ export default function App() {
         ctx.shadowBlur = 0;
       });
 
-      // Draw Other Players
+      // Draw Other Players (Ghosts)
       Object.values(otherPlayers).forEach((p: any) => {
         const relZ = p.y - localDistance;
-        if (relZ < -100 || relZ > 3000) return;
+        if (relZ < -300 || relZ > 4000) return;
 
         const scale = 800 / (relZ + 800);
         const x = getX(p.x, scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 60 * scale;
-
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.6)';
-        ctx.fillRect(x - size/2, y - size, size, size);
+        
+        // Render ghost car
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#3b82f6';
+        
+        // Ghost Body
+        ctx.fillStyle = '#3b82f6';
+        ctx.beginPath();
+        const gSize = 60 * scale;
+        ctx.roundRect(x - gSize/2, y - gSize/2, gSize, gSize/2, 6 * scale);
+        ctx.fill();
+        
+        // Ghost identifier
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#60a5fa';
+        ctx.font = `bold ${Math.max(8, 14 * scale)}px Inter`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`RIVAL P-${p.id.slice(0, 2)}`, x, y - gSize/2 - 5);
+        ctx.restore();
       });
 
       // Draw Player Car (Improved 3D-ish model and positioning)
@@ -994,6 +1035,19 @@ export default function App() {
                 >
                   <Settings className={`w-4 h-4 ${isGarageOpen ? 'animate-spin-slow' : ''}`} />
                 </button>
+                {gameState === 'racing' && (
+                  <button 
+                    onClick={() => {
+                      setGameState('setup');
+                      setGameMode(null);
+                      setMultiRoomConfirmed(false);
+                      if (socket) socket.disconnect();
+                    }}
+                    className="p-2 rounded-full bg-red-600/20 border border-red-500/40 hover:bg-red-600 transition-all text-white group"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1009,12 +1063,22 @@ export default function App() {
                     </p>
                   </div>
                   <div className="w-[1px] bg-white/10" />
-                  <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                    <p className="text-4xl font-mono font-black text-green-400">
-                      {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
-                    </p>
-                  </div>
+                  {gameMode === 'multi' && Object.values(otherPlayers).length > 0 ? (
+                    <div className="text-center">
+                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap to Rival</p>
+                      <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                        {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(0)}
+                        <span className="text-xs ml-1 opacity-40">m</span>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                      <p className="text-4xl font-mono font-black text-green-400">
+                        {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Thermal HUD - Circular Gauges */}
@@ -1294,12 +1358,19 @@ export default function App() {
                         <motion.button
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
-                          onClick={() => setGameState('racing')}
-                          className="group relative bg-rose-600 px-16 py-6 rounded-3xl font-black text-3xl italic tracking-tighter text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] border-b-4 border-rose-800 transition-all"
+                          onClick={() => {
+                            if (gameMode === 'multi') {
+                              setIsWaiting(true);
+                            } else {
+                              setGameState('racing');
+                            }
+                          }}
+                          className="group relative bg-rose-600 px-16 py-6 rounded-3xl font-black text-3xl italic tracking-tighter text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] border-b-4 border-rose-800 transition-all disabled:opacity-50"
+                          disabled={isWaiting}
                         >
                           <div className="flex items-center gap-4">
-                            <Play className="w-10 h-10 fill-current" />
-                            ENGINE START
+                            {isWaiting ? <RotateCcw className="w-10 h-10 animate-spin" /> : <Play className="w-10 h-10 fill-current" />}
+                            {isWaiting ? 'WAITING FOR RIVAL...' : 'ENGINE START'}
                           </div>
                         </motion.button>
 
@@ -1413,16 +1484,21 @@ export default function App() {
                     <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
                     <AlertTriangle className="w-12 h-12 text-white relative z-10" />
                   </div>
-                  <h3 className="text-5xl font-black mb-4 italic tracking-tighter text-white drop-shadow-2xl">CRITICAL FAILURE</h3>
-                  <p className="text-red-200/60 mb-10 max-w-sm text-lg italic leading-tight">The mechanical pressure was too extreme. The engine has detonated into shrapnel.</p>
+                  <h3 className="text-5xl font-black mb-4 italic tracking-tighter text-white drop-shadow-2xl uppercase">Critical Failure</h3>
+                  <p className="text-red-200/60 mb-10 max-w-sm text-lg italic leading-tight">
+                    {gameMode === 'multi' ? 'MISSION FAILED: Unit compromised. Rival has secured the sector.' : 'The mechanical pressure was too extreme. The engine has detonated.'}
+                  </p>
                   <button 
                     onClick={() => {
                       setGameState('setup');
                       setEngineTemp(20);
+                      setGameMode(null);
+                      setMultiRoomConfirmed(false);
+                      if (socket) socket.disconnect();
                     }}
                     className="relative z-10 bg-white text-red-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-red-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
-                    REASSEMBLE MACHINE
+                    RETURN TO ASSEMBLY
                   </button>
                   <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
                 </motion.div>
@@ -1436,13 +1512,35 @@ export default function App() {
                 >
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,197,94,0.2)_0%,transparent_70%)] animate-pulse" />
                   <Trophy className="w-24 h-24 text-yellow-500 mb-8 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)] animate-bounce" />
-                  <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">GLORY ACHIEVED</h3>
-                  <p className="text-green-200/60 mb-10 max-w-sm text-lg italic italic leading-tight">Your machine has survived the gauntlet. You are the ultimate master of mechanics.</p>
+                  
+                  {gameMode === 'multi' && multiplayerWinner ? (
+                    <>
+                      <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">
+                        {multiplayerWinner.id === socket?.id ? 'VICTORY SECURED' : 'DEFEAT ACKNOWLEDGED'}
+                      </h3>
+                      <p className="text-green-200/60 mb-10 max-w-sm text-lg italic leading-tight">
+                        {multiplayerWinner.id === socket?.id 
+                          ? `Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
+                          : `Rival has achieved completion via ${multiplayerWinner.reason}. Retrying synchronization recommended.`}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">GLORY ACHIEVED</h3>
+                      <p className="text-green-200/60 mb-10 max-w-sm text-lg italic leading-tight">Your machine has survived the gauntlet. You are the ultimate master of mechanics.</p>
+                    </>
+                  )}
+                  
                   <button 
-                    onClick={() => setGameState('setup')}
+                    onClick={() => {
+                      setGameState('setup');
+                      setGameMode(null);
+                      setMultiRoomConfirmed(false);
+                      if (socket) socket.disconnect();
+                    }}
                     className="relative z-10 bg-white text-green-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-green-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
-                    CONTINUE CAMPAIGN
+                    CONTINUE MISSION
                   </button>
                   <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
                 </motion.div>
