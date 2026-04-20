@@ -13,8 +13,8 @@ service cloud.firestore {
     
     function isValidRoom(data) {
       return data.status in ['waiting', 'racing', 'finished']
-        && (data.get('winnerId', '') == null || data.get('winnerId', '') is string)
-        && (data.get('winReason', '') == null || data.get('winReason', '') is string);
+        && (data.get('winnerId', '') is string)
+        && (data.get('winReason', '') is string);
     }
 
     function isValidPlayer(data) {
@@ -31,11 +31,21 @@ service cloud.firestore {
     match /rooms/{roomId} {
       allow read: if true;
       allow create: if isSignedIn() && isValidId(roomId) && isValidRoom(request.resource.data);
-      allow update: if isSignedIn() && isValidRoom(request.resource.data);
+      allow update: if isSignedIn() && isValidRoom(request.resource.data)
+        && (
+          // Allow status transitions
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'winnerId', 'winReason'])
+          || 
+          // Allow updates if you are part of the room (for simplicity in this prototype)
+          exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid))
+        );
 
       match /players/{playerId} {
         allow read: if true;
-        allow write: if isSignedIn();
+        allow create: if isOwner(playerId) && isValidPlayer(request.resource.data);
+        allow update: if isOwner(playerId) && isValidPlayer(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['x', 'y', 'angle', 'progress', 'temp', 'brakeTemp', 'gearRatio', 'isExploded', 'lastUpdate']);
+        allow delete: if isOwner(playerId);
       }
     }
   }

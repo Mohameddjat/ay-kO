@@ -201,7 +201,6 @@ const WheelVisual = ({ className }: { className?: string }) => (
 export default function App() {
   const [roomId, setRoomId] = useState('main-race');
   const [socketId, setSocketId] = useState<string | null>(null);
-  const sessionIdRef = useRef(Math.random().toString(36).substring(2, 9));
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [otherPlayers, setOtherPlayers] = useState<Record<string, PlayerState>>({});
@@ -228,17 +227,11 @@ export default function App() {
     localStorage.setItem('gear_race_gears', JSON.stringify(gears));
   }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
-  const gameStateRef = useRef(gameState);
-  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
-
   const [multiplayerWinner, setMultiplayerWinner] = useState<{ id: string, reason: string } | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
-  const isWaitingRef = useRef(isWaiting);
-  useEffect(() => { isWaitingRef.current = isWaiting; }, [isWaiting]);
   const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
   const [availableRooms, setAvailableRooms] = useState<{id: string, createdAt: any}[]>([]);
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
-  const [debugLog, setDebugLog] = useState('');
   const [joinIdInput, setJoinIdInput] = useState('');
   const [isGarageOpen, setIsGarageOpen] = useState(false);
   const [isMissionsOpen, setIsMissionsOpen] = useState(false);
@@ -433,13 +426,14 @@ export default function App() {
     const roomsQuery = query(
       collection(db, 'rooms'),
       where('status', '==', 'waiting'),
-      limit(100)
+      limit(20)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
       const rooms = snapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          createdAt: doc.data().createdAt?.toMillis() || Date.now() 
-        }));
+        id: doc.id, 
+        createdAt: doc.data().createdAt?.toMillis() || Date.now() 
+      }));
+      // Sort locally to avoid needing complex composite indexes
       rooms.sort((a, b) => b.createdAt - a.createdAt);
       setAvailableRooms(rooms);
     });
@@ -450,17 +444,20 @@ export default function App() {
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
-         // socket ID is managed below
+        setSocketId(user.uid);
       }
     });
 
-    if (gameMode !== 'multi' || !auth.currentUser || !multiRoomConfirmed) {
-      setConnectionStatus('disconnected');
-      setOtherPlayers({});
+    if (gameMode !== 'multi' || !auth.currentUser) {
+      if (gameMode === 'multi') setConnectionStatus('connecting');
+      else {
+        setConnectionStatus('disconnected');
+        setOtherPlayers({});
+      }
       return () => unsubAuth();
     }
 
-    const myUid = auth.currentUser.uid + '_' + sessionIdRef.current;
+    const myUid = auth.currentUser.uid;
     setSocketId(myUid);
     setConnectionStatus('connecting');
 
@@ -482,20 +479,6 @@ export default function App() {
           winReason: null
         });
       }
-      
-      // Ensure player exists in room to show up in other people's lobbies
-      await setDoc(doc(db, 'rooms', roomId, 'players', myUid), {
-        id: myUid,
-        isReady: isWaitingRef.current, // Keep true if they already clicked ready
-        progress: 0,
-        x: 0,
-        y: 0,
-        temp: 20,
-        brakeTemp: 20,
-        isExploded: false,
-        lastUpdate: serverTimestamp()
-      }, { merge: true });
-
       setConnectionStatus('connected');
     };
     initRoom();
@@ -505,22 +488,16 @@ export default function App() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       
-      const currentGameState = gameStateRef.current;
-      const currentIsWaiting = isWaitingRef.current;
-
-      if (data.status === 'racing' && (currentGameState === 'setup' || currentIsWaiting)) {
+      if (data.status === 'racing' && (gameState === 'setup' || isWaiting)) {
         setIsWaiting(false);
         setGameState('racing');
         setMultiplayerWinner(null);
       } else if (data.status === 'finished') {
-        if (currentGameState === 'racing' || currentGameState === 'exploded' || currentGameState === 'finished') {
-          setGameState('finished');
-          setMultiplayerWinner(prev => {
-            if (!prev || prev.id !== data.winnerId) {
-              return { id: data.winnerId, reason: data.winReason || 'Race Finished' };
-            }
-            return prev;
-          });
+        if (gameState === 'racing' || gameState === 'exploded' || gameState === 'finished') {
+          if (data.winnerId && (!multiplayerWinner || multiplayerWinner.id !== data.winnerId)) {
+            setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
+            setGameState('finished');
+          }
         }
       }
     });
@@ -537,19 +514,10 @@ export default function App() {
 
       // Auto-start logic: ALL players in room must be ready
       const allPlayers = snapshot.docs.map(d => d.data());
-      const readyCount = allPlayers.filter(p => p.isReady).length;
-      const allReady = allPlayers.length >= 2 && readyCount === allPlayers.length;
+      const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
       
-      if (gameStateRef.current === 'setup') {
-        setDebugLog(`Players: ${allPlayers.length} | Ready: ${readyCount}`);
-      }
-
-      if (allReady && gameStateRef.current === 'setup') {
-        setDebugLog(`Race commencing...`);
-        updateDoc(roomRef, { status: 'racing' }).catch(e => {
-          console.error(e);
-          setDebugLog('Error starting race: ' + e.message);
-        });
+      if (allReady && gameState === 'setup') {
+        updateDoc(roomRef, { status: 'racing' }).catch(console.error);
       }
     });
 
@@ -738,12 +706,12 @@ export default function App() {
 
       if (localEngineTemp >= 90) {
         setGameState('exploded');
-        if (gameMode === 'multi' && socketId) {
+        if (gameMode === 'multi' && auth.currentUser) {
           // Fetch the opponent from the backend to guarantee we get the correct ID, rather than relying on potentially stale closure state
           getDocs(collection(db, 'rooms', roomId, 'players')).then(snap => {
             let otherId = 'SYSTEM';
             snap.forEach(d => {
-              if (d.id !== socketId) otherId = d.id;
+              if (d.id !== auth.currentUser!.uid) otherId = d.id;
             });
             updateDoc(doc(db, 'rooms', roomId), {
               status: 'finished',
@@ -765,10 +733,10 @@ export default function App() {
         updateMissionProgress('win', 1, true);
         updateMissionProgress('temp', localEngineTemp, true);
 
-        if (gameMode === 'multi' && socketId) {
+        if (gameMode === 'multi' && auth.currentUser) {
           updateDoc(doc(db, 'rooms', roomId), {
             status: 'finished',
-            winnerId: socketId,
+            winnerId: auth.currentUser.uid,
             winReason: 'crossed finish line'
           });
         }
@@ -781,7 +749,7 @@ export default function App() {
           id: Math.random().toString(36).substr(2, 9),
           lane: Math.floor(Math.random() * 3) - 1,
           z: localDistance + 2500,
-          type: Math.random() > 0.5 ? 'crate' : 'barrier'
+          type: Math.random() > 0.5 ? 'truck' : 'motorcycle'
         });
         nextObstacleZRef.current = localDistance + 400 + Math.random() * 600;
       }
@@ -956,15 +924,97 @@ export default function App() {
         const scale = 800 / (relZ + 800); // Increased perspective constant for "further" feel
         const x = getX(obs.lane, scale);
         const y = horizon + (h - horizon) * scale;
-        const size = 60 * scale; 
-
-        ctx.fillStyle = obs.type === 'crate' ? '#78350f' : '#e11d48';
+        
+        ctx.save();
         if (localBoostTimer > 0) {
           ctx.shadowColor = '#fbbf24';
           ctx.shadowBlur = 20;
         }
-        ctx.fillRect(x - size/2, y - size, size, size);
-        ctx.shadowBlur = 0;
+
+        if (obs.type === 'truck') {
+          // Draw Truck (Back view)
+          const width = 100 * scale;
+          const height = 110 * scale;
+          const ty = y - height;
+          
+          // Truck Body
+          ctx.fillStyle = '#cbd5e1'; // Light grey/white
+          ctx.beginPath();
+          ctx.roundRect(x - width/2, ty, width, height - 15 * scale, 4 * scale);
+          ctx.fill();
+          
+          // Rear door frames
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 2 * scale;
+          ctx.strokeRect(x - width/2 + 5 * scale, ty + 5 * scale, width - 10 * scale, height - 25 * scale);
+          ctx.beginPath();
+          ctx.moveTo(x, ty + 5 * scale);
+          ctx.lineTo(x, ty + height - 20 * scale);
+          ctx.stroke();
+          
+          // Tail lights
+          ctx.fillStyle = '#ef4444';
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#ef4444';
+          ctx.fillRect(x - width/2 + 5 * scale, ty + height - 25 * scale, 15 * scale, 6 * scale);
+          ctx.fillRect(x + width/2 - 20 * scale, ty + height - 25 * scale, 15 * scale, 6 * scale);
+          ctx.shadowBlur = 0;
+          
+          // Tires
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(x - width/2 - 5 * scale, ty + height - 20 * scale, 15 * scale, 20 * scale);
+          ctx.fillRect(x + width/2 - 10 * scale, ty + height - 20 * scale, 15 * scale, 20 * scale);
+          
+          // Mudguards
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(x - width/2 - 10 * scale, ty + height - 20 * scale, 25 * scale, 5 * scale);
+          ctx.fillRect(x + width/2 - 15 * scale, ty + height - 20 * scale, 25 * scale, 5 * scale);
+          
+          // Bottom bumper
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(x - width/2 + 5 * scale, ty + height - 20 * scale, width - 10 * scale, 8 * scale);
+        } else {
+          // Draw Motorcycle (Back view)
+          const width = 30 * scale;
+          const height = 60 * scale;
+          const ty = y - height;
+          
+          // Rider body (Leather jacket)
+          ctx.fillStyle = '#1e293b'; 
+          ctx.beginPath();
+          ctx.ellipse(x, ty + height/2.2, width/1.5, height/3, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Rider helmet
+          ctx.fillStyle = '#ef4444'; // Red helmet
+          ctx.beginPath();
+          ctx.arc(x, ty + height/4, 16 * scale, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Helmet visor
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(x - 8 * scale, ty + height/4 - 2 * scale, 16 * scale, 4 * scale);
+
+          // Rear wheel housing / bike body
+          ctx.fillStyle = '#334155';
+          ctx.beginPath();
+          ctx.roundRect(x - width/2, ty + height/1.5, width, height/3, 4 * scale);
+          ctx.fill();
+
+          // Tail light
+          ctx.fillStyle = '#ef4444';
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#ef4444';
+          ctx.fillRect(x - 6 * scale, ty + height/1.4, 12 * scale, 4 * scale);
+          ctx.shadowBlur = 0;
+
+          // Back Tire
+          ctx.fillStyle = '#0f172a';
+          ctx.roundRect(x - 6 * scale, ty + height - 10 * scale, 12 * scale, 15 * scale, 2 * scale);
+          ctx.fill();
+        }
+
+        ctx.restore();
       });
 
       // Draw Other Players (Ghosts)
@@ -1049,10 +1099,10 @@ export default function App() {
       ctx.restore();
 
       // Emit state to Firebase
-      if (gameMode === 'multi' && socketId) {
-        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
+      if (gameMode === 'multi' && auth.currentUser) {
+        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
         setDoc(playerRef, {
-          id: socketId,
+          id: auth.currentUser.uid,
           x: playerLane,
           y: localDistance,
           progress: localDistance / TRACK_LENGTH,
@@ -1239,7 +1289,7 @@ export default function App() {
                     </div>
                     <div>
                       <h3 className="font-bold mb-1">2. Avoid Obstacles</h3>
-                      <p className="text-sm text-white/60 leading-relaxed">Watch out for crates, bumps, and ramps. Hitting obstacles at high speed will damage your engine!</p>
+                      <p className="text-sm text-white/60 leading-relaxed">Watch out for trucks and motorcycles on the road. Hitting them at high speed will damage your engine!</p>
                     </div>
                   </div>
                 </div>
@@ -1328,9 +1378,9 @@ export default function App() {
                 {gameState === 'racing' && (
                   <button 
                     onClick={() => {
-                      if (gameMode === 'multi' && socketId) {
+                      if (gameMode === 'multi' && auth.currentUser) {
                         const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
@@ -1685,9 +1735,11 @@ export default function App() {
                         <div className="flex flex-col gap-2">
                           <button 
                             onClick={() => {
-                              if (gameMode === 'multi' && socketId) {
-                                const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
-                                deleteDoc(playerRef).catch(console.error);
+                              if (gameMode === 'multi' && auth.currentUser) {
+                                const roomRef = doc(db, 'rooms', roomId);
+                                const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                                updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                                updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                               }
                               setGameMode(null);
                               setMultiRoomConfirmed(false);
@@ -1727,10 +1779,10 @@ export default function App() {
                           onClick={() => {
                             if (gameMode === 'multi') {
                               setIsWaiting(true);
-                              if (socketId) {
-                                const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
+                              if (auth.currentUser) {
+                                const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
                                 setDoc(playerRef, {
-                                  id: socketId,
+                                  id: auth.currentUser.uid,
                                   isReady: true,
                                   progress: 0,
                                   x: 0,
@@ -1753,11 +1805,6 @@ export default function App() {
                             {isWaiting ? 'WAITING FOR RIVAL...' : 'ENGINE START'}
                           </div>
                         </motion.button>
-                        {isWaiting && debugLog && (
-                          <div className="bg-red-500/20 text-red-400 p-2 text-[10px] rounded border border-red-500/50">
-                            {debugLog}
-                          </div>
-                        )}
 
                         <div className="flex flex-col gap-3">
                           <button
@@ -1854,9 +1901,9 @@ export default function App() {
                   </p>
                   <button 
                     onClick={() => {
-                      if (gameMode === 'multi' && socketId) {
+                      if (gameMode === 'multi' && auth.currentUser) {
                         const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
@@ -1878,7 +1925,7 @@ export default function App() {
               )}
 
               {gameState === 'finished' && (() => {
-                const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === socketId);
+                const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
                 return (
                 <motion.div 
                   initial={{ opacity: 0, y: 50 }}
@@ -1915,9 +1962,9 @@ export default function App() {
                   
                   <button 
                     onClick={() => {
-                      if (gameMode === 'multi' && socketId) {
+                      if (gameMode === 'multi' && auth.currentUser) {
                         const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
