@@ -11,7 +11,11 @@ import {
   getDoc,
   getDocs,
   serverTimestamp,
-  increment
+  increment,
+  query,
+  where,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from './lib/firebase';
@@ -226,6 +230,7 @@ export default function App() {
   const [multiplayerWinner, setMultiplayerWinner] = useState<{ id: string, reason: string } | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
   const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
+  const [availableRooms, setAvailableRooms] = useState<{id: string, createdAt: any}[]>([]);
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
   const [joinIdInput, setJoinIdInput] = useState('');
   const [isGarageOpen, setIsGarageOpen] = useState(false);
@@ -414,6 +419,26 @@ export default function App() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [gameState]);
+
+  // Fetch available rooms
+  useEffect(() => {
+    if (gameMode !== 'multi' || multiRoomConfirmed) return;
+    const roomsQuery = query(
+      collection(db, 'rooms'),
+      where('status', '==', 'waiting'),
+      limit(20)
+    );
+    const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
+      const rooms = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        createdAt: doc.data().createdAt?.toMillis() || Date.now() 
+      }));
+      // Sort locally to avoid needing complex composite indexes
+      rooms.sort((a, b) => b.createdAt - a.createdAt);
+      setAvailableRooms(rooms);
+    });
+    return () => unsubscribe();
+  }, [gameMode, multiRoomConfirmed]);
 
   // Firebase Sync
   useEffect(() => {
@@ -1595,6 +1620,29 @@ export default function App() {
                             >
                               JOIN
                             </button>
+                          </div>
+
+                          <div className="h-[1px] w-full bg-white/10 my-2" />
+                          
+                          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-2">
+                            <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1 text-left">Available Open Sectors</p>
+                            {availableRooms.length === 0 ? (
+                               <div className="text-xs text-white/20 italic text-center p-4 bg-black/20 rounded-xl border border-white/5">No open sectors found</div>
+                            ) : (
+                               availableRooms.map(room => (
+                                  <button
+                                    key={room.id}
+                                    onClick={() => {
+                                      setRoomId(room.id);
+                                      setMultiRoomConfirmed(true);
+                                    }}
+                                    className="bg-black/40 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 p-3 rounded-xl flex items-center justify-between group transition-all"
+                                  >
+                                    <span className="font-mono text-sm font-bold text-white group-hover:text-rose-400 transition-colors">Sector: {room.id}</span>
+                                    <span className="text-[10px] font-black uppercase text-white/40 group-hover:text-rose-400 bg-white/5 group-hover:bg-rose-500/20 px-2 py-1 rounded transition-colors">JOIN</span>
+                                  </button>
+                               ))
+                            )}
                           </div>
                         </div>
                       </div>
