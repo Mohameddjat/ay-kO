@@ -1153,6 +1153,7 @@ export default function App() {
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
+                      setIsWaiting(false);
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
@@ -1248,7 +1249,7 @@ export default function App() {
               </div>
 
               {/* HUD: Comp Stats & Thermal Overlay */}
-              <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex">
+              <div className="flex flex-col gap-2 pointer-events-none hidden sm:flex absolute bottom-32 right-72">
                 <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-2 w-48 shadow-xl">
                   <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-2 flex items-center justify-between">
                     <span>Competitors</span>
@@ -1456,8 +1457,15 @@ export default function App() {
                         <div className="flex flex-col gap-2">
                           <button 
                             onClick={() => {
+                              if (gameMode === 'multi' && auth.currentUser) {
+                                const roomRef = doc(db, 'rooms', roomId);
+                                const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                                updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                                updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                              }
                               setGameMode(null);
                               setMultiRoomConfirmed(false);
+                              setIsWaiting(false);
                               setRoomId('main-race');
                             }}
                             className="text-[10px] font-black text-rose-500/60 uppercase tracking-widest hover:text-rose-500 transition-colors"
@@ -1642,6 +1650,7 @@ export default function App() {
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
+                      setIsWaiting(false);
                       setGameState('setup');
                       setEngineTemp(20);
                       setGameMode(null);
@@ -1692,6 +1701,7 @@ export default function App() {
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
+                      setIsWaiting(false);
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
