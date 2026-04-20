@@ -360,13 +360,19 @@ export default function App() {
     const roomRef = doc(db, 'rooms', roomId);
     const playersRef = collection(db, 'rooms', roomId, 'players');
 
-    // Ensure room exists
+    // Ensure room exists and is reset if finished
     const initRoom = async () => {
       const snap = await getDoc(roomRef);
       if (!snap.exists()) {
         await setDoc(roomRef, {
           status: 'waiting',
           createdAt: serverTimestamp()
+        });
+      } else if (snap.data().status === 'finished') {
+        await updateDoc(roomRef, {
+          status: 'waiting',
+          winnerId: null,
+          winReason: null
         });
       }
       setConnectionStatus('connected');
@@ -688,6 +694,48 @@ export default function App() {
       }
 
       ctx.clearRect(0, 0, w, h);
+
+      // Sky Gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
+      skyGrad.addColorStop(0, '#1e3a8a'); // Deep blue
+      skyGrad.addColorStop(1, '#60a5fa'); // Sky blue
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, w, horizon);
+
+      // Simple Sun
+      ctx.fillStyle = '#fef08a';
+      ctx.shadowBlur = 40;
+      ctx.shadowColor = '#facc15';
+      ctx.beginPath();
+      ctx.arc(w * 0.8, h * 0.15, 30, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Simple Clouds
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      const drawCloud = (cx: number, cy: number, size: number) => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, size, 0, Math.PI * 2);
+        ctx.arc(cx + size * 0.6, cy - size * 0.2, size * 0.8, 0, Math.PI * 2);
+        ctx.arc(cx + size * 1.2, cy, size * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawCloud(w * 0.2, h * 0.1, 20);
+      drawCloud(w * 0.5, h * 0.05, 15);
+      drawCloud(w * 0.7, h * 0.12, 25);
+
+      // Draw Distant Mountains Silhouette
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.moveTo(0, horizon);
+      ctx.lineTo(w * 0.1, horizon - 20);
+      ctx.lineTo(w * 0.2, horizon - 40);
+      ctx.lineTo(w * 0.3, horizon - 10);
+      ctx.lineTo(w * 0.4, horizon - 30);
+      ctx.lineTo(w * 0.6, horizon - 50);
+      ctx.lineTo(w * 0.8, horizon - 20);
+      ctx.lineTo(w, horizon);
+      ctx.fill();
 
       // Draw Grass
       ctx.fillStyle = '#064e3b';
@@ -1099,6 +1147,12 @@ export default function App() {
                 {gameState === 'racing' && (
                   <button 
                     onClick={() => {
+                      if (gameMode === 'multi' && auth.currentUser) {
+                        const roomRef = doc(db, 'rooms', roomId);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                        updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                      }
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
@@ -1113,15 +1167,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Dashboard Overlay */}
-            <div className="absolute top-20 left-4 right-4 flex justify-between items-start pointer-events-none z-30">
+            {/* Dashboard Overlay - Bottom Anchored */}
+            <div className="absolute bottom-32 left-4 right-4 flex justify-between items-end pointer-events-none z-30">
               <div className="flex flex-col gap-4">
                 <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex gap-6 shadow-2xl">
                   <div className="text-center">
                     <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                    <p className="text-4xl font-mono font-black text-white">
+                    <p className="text-5xl font-mono font-black text-rose-500 italic">
                       {(currentSpeed / 10).toFixed(0)}
-                      <span className="text-xs ml-1 opacity-40">km/h</span>
+                      <span className="text-xs ml-1 opacity-60 text-white">KM/H</span>
                     </p>
                   </div>
                   <div className="w-[1px] bg-white/10" />
@@ -1129,14 +1183,14 @@ export default function App() {
                     <div className="text-center">
                       <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap to Rival</p>
                       <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
-                        {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(0)}
-                        <span className="text-xs ml-1 opacity-40">m</span>
+                        {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
+                          <span className="text-xs ml-1 opacity-40 text-white font-black italic">M</span>
                       </p>
                     </div>
                   ) : (
                     <div className="text-center">
                       <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                      <p className="text-4xl font-mono font-black text-green-400">
+                      <p className="text-4xl font-mono font-black text-blue-400 italic">
                         {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
                       </p>
                     </div>
@@ -1186,7 +1240,7 @@ export default function App() {
                       </div>
                     </div>
                     <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
-                      <RotateCcw className="w-2 h-2" />
+                      <Zap className="w-2 h-2 text-yellow-400" />
                       Brakes
                     </span>
                   </div>
@@ -1582,6 +1636,12 @@ export default function App() {
                   </p>
                   <button 
                     onClick={() => {
+                      if (gameMode === 'multi' && auth.currentUser) {
+                        const roomRef = doc(db, 'rooms', roomId);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                        updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                      }
                       setGameState('setup');
                       setEngineTemp(20);
                       setGameMode(null);
@@ -1626,6 +1686,12 @@ export default function App() {
                   
                   <button 
                     onClick={() => {
+                      if (gameMode === 'multi' && auth.currentUser) {
+                        const roomRef = doc(db, 'rooms', roomId);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                        updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                      }
                       setGameState('setup');
                       setGameMode(null);
                       setMultiRoomConfirmed(false);
