@@ -31,14 +31,7 @@ service cloud.firestore {
     match /rooms/{roomId} {
       allow read: if true;
       allow create: if isSignedIn() && isValidId(roomId) && isValidRoom(request.resource.data);
-      allow update: if isSignedIn() && isValidRoom(request.resource.data)
-        && (
-          // Allow status transitions
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'winnerId', 'winReason'])
-          || 
-          // Allow updates if you are part of the room (for simplicity in this prototype)
-          exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid))
-        );
+      allow update: if isSignedIn() && isValidRoom(request.resource.data);
 
       match /players/{playerId} {
         allow read: if true;

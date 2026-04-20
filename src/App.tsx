@@ -237,6 +237,7 @@ export default function App() {
   const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
   const [availableRooms, setAvailableRooms] = useState<{id: string, createdAt: any}[]>([]);
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
+  const [debugLog, setDebugLog] = useState('');
   const [joinIdInput, setJoinIdInput] = useState('');
   const [isGarageOpen, setIsGarageOpen] = useState(false);
   const [isMissionsOpen, setIsMissionsOpen] = useState(false);
@@ -535,10 +536,19 @@ export default function App() {
 
       // Auto-start logic: ALL players in room must be ready
       const allPlayers = snapshot.docs.map(d => d.data());
-      const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
+      const readyCount = allPlayers.filter(p => p.isReady).length;
+      const allReady = allPlayers.length >= 2 && readyCount === allPlayers.length;
       
+      if (gameStateRef.current === 'setup') {
+        setDebugLog(`Players: ${allPlayers.length} | Ready: ${readyCount}`);
+      }
+
       if (allReady && gameStateRef.current === 'setup') {
-        updateDoc(roomRef, { status: 'racing' }).catch(console.error);
+        setDebugLog(`Race commencing...`);
+        updateDoc(roomRef, { status: 'racing' }).catch(e => {
+          console.error(e);
+          setDebugLog('Error starting race: ' + e.message);
+        });
       }
     });
 
@@ -1742,6 +1752,11 @@ export default function App() {
                             {isWaiting ? 'WAITING FOR RIVAL...' : 'ENGINE START'}
                           </div>
                         </motion.button>
+                        {isWaiting && debugLog && (
+                          <div className="bg-red-500/20 text-red-400 p-2 text-[10px] rounded border border-red-500/50">
+                            {debugLog}
+                          </div>
+                        )}
 
                         <div className="flex flex-col gap-3">
                           <button
