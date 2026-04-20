@@ -201,6 +201,7 @@ const WheelVisual = ({ className }: { className?: string }) => (
 export default function App() {
   const [roomId, setRoomId] = useState('main-race');
   const [socketId, setSocketId] = useState<string | null>(null);
+  const sessionIdRef = useRef(Math.random().toString(36).substring(2, 9));
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [otherPlayers, setOtherPlayers] = useState<Record<string, PlayerState>>({});
@@ -449,7 +450,7 @@ export default function App() {
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setSocketId(user.uid);
+         // socket ID is managed below
       }
     });
 
@@ -459,7 +460,7 @@ export default function App() {
       return () => unsubAuth();
     }
 
-    const myUid = auth.currentUser.uid;
+    const myUid = auth.currentUser.uid + '_' + sessionIdRef.current;
     setSocketId(myUid);
     setConnectionStatus('connecting');
 
@@ -737,12 +738,12 @@ export default function App() {
 
       if (localEngineTemp >= 90) {
         setGameState('exploded');
-        if (gameMode === 'multi' && auth.currentUser) {
+        if (gameMode === 'multi' && socketId) {
           // Fetch the opponent from the backend to guarantee we get the correct ID, rather than relying on potentially stale closure state
           getDocs(collection(db, 'rooms', roomId, 'players')).then(snap => {
             let otherId = 'SYSTEM';
             snap.forEach(d => {
-              if (d.id !== auth.currentUser!.uid) otherId = d.id;
+              if (d.id !== socketId) otherId = d.id;
             });
             updateDoc(doc(db, 'rooms', roomId), {
               status: 'finished',
@@ -764,10 +765,10 @@ export default function App() {
         updateMissionProgress('win', 1, true);
         updateMissionProgress('temp', localEngineTemp, true);
 
-        if (gameMode === 'multi' && auth.currentUser) {
+        if (gameMode === 'multi' && socketId) {
           updateDoc(doc(db, 'rooms', roomId), {
             status: 'finished',
-            winnerId: auth.currentUser.uid,
+            winnerId: socketId,
             winReason: 'crossed finish line'
           });
         }
@@ -1048,10 +1049,10 @@ export default function App() {
       ctx.restore();
 
       // Emit state to Firebase
-      if (gameMode === 'multi' && auth.currentUser) {
-        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+      if (gameMode === 'multi' && socketId) {
+        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
         setDoc(playerRef, {
-          id: auth.currentUser.uid,
+          id: socketId,
           x: playerLane,
           y: localDistance,
           progress: localDistance / TRACK_LENGTH,
@@ -1327,9 +1328,9 @@ export default function App() {
                 {gameState === 'racing' && (
                   <button 
                     onClick={() => {
-                      if (gameMode === 'multi' && auth.currentUser) {
+                      if (gameMode === 'multi' && socketId) {
                         const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
@@ -1684,8 +1685,8 @@ export default function App() {
                         <div className="flex flex-col gap-2">
                           <button 
                             onClick={() => {
-                              if (gameMode === 'multi' && auth.currentUser) {
-                                const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                              if (gameMode === 'multi' && socketId) {
+                                const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
                                 deleteDoc(playerRef).catch(console.error);
                               }
                               setGameMode(null);
@@ -1726,10 +1727,10 @@ export default function App() {
                           onClick={() => {
                             if (gameMode === 'multi') {
                               setIsWaiting(true);
-                              if (auth.currentUser) {
-                                const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                              if (socketId) {
+                                const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
                                 setDoc(playerRef, {
-                                  id: auth.currentUser.uid,
+                                  id: socketId,
                                   isReady: true,
                                   progress: 0,
                                   x: 0,
@@ -1853,9 +1854,9 @@ export default function App() {
                   </p>
                   <button 
                     onClick={() => {
-                      if (gameMode === 'multi' && auth.currentUser) {
+                      if (gameMode === 'multi' && socketId) {
                         const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
@@ -1877,7 +1878,7 @@ export default function App() {
               )}
 
               {gameState === 'finished' && (() => {
-                const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
+                const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === socketId);
                 return (
                 <motion.div 
                   initial={{ opacity: 0, y: 50 }}
@@ -1914,9 +1915,9 @@ export default function App() {
                   
                   <button 
                     onClick={() => {
-                      if (gameMode === 'multi' && auth.currentUser) {
+                      if (gameMode === 'multi' && socketId) {
                         const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        const playerRef = doc(db, 'rooms', roomId, 'players', socketId);
                         updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
                         updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
