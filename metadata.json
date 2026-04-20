@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Gear Race: Hill Climb Multiplayer",
-  "description": "A physics-based racing game where you build complex gear systems to power your machine across challenging terrain. Features real-time multiplayer and thermal management mechanics.",
+  "name": "Gear Clash: Road Rampage",
+  "description": "A high-speed racing game where you build gear-powered machines to dodge trucks and motorcycles in real-time multiplayer races.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

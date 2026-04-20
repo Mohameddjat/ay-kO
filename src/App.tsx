@@ -50,10 +50,43 @@ class SoundManager {
   private ctx: AudioContext | null = null;
   private engineOsc: OscillatorNode | null = null;
   private engineGain: GainNode | null = null;
+  private bgmGain: GainNode | null = null;
 
   init() {
     if (this.ctx) return;
     this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+
+  playBackgroundMusic() {
+    if (!this.ctx || this.bgmGain) return;
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+    
+    // Create a rhythmic loop (simple synth bassline)
+    const playNote = (time: number, freq: number, duration: number) => {
+      if (!this.ctx || !this.bgmGain) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, time);
+      gain.gain.setValueAtTime(0.05, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+      osc.connect(gain);
+      gain.connect(this.bgmGain);
+      osc.start(time);
+      osc.stop(time + duration);
+    };
+
+    const loop = () => {
+      const now = this.ctx!.currentTime;
+      for (let i = 0; i < 8; i++) {
+        playNote(now + i * 0.25, 40, 0.1);
+        if (i % 2 === 0) playNote(now + i * 0.25 + 0.125, 60, 0.1);
+      }
+      setTimeout(loop, 2000);
+    };
+    loop();
+    this.bgmGain.connect(this.ctx.destination);
   }
 
   playClick() {
@@ -383,6 +416,8 @@ export default function App() {
     { id: 'super_cooler', name: 'Super Cooler', description: 'Reduces engine heat generation by 40%.', price: 300, icon: <Zap className="w-5 h-5" /> },
     { id: 'nitro_system', name: 'Nitro System', description: 'Increases base torque by 25%.', price: 450, icon: <Flame className="w-5 h-5" /> },
     { id: 'aero_chassis', name: 'Aero Chassis', description: 'Reduces air resistance at high speeds.', price: 600, icon: <Wind className="w-5 h-5" /> },
+    { id: 'skin_chrome', name: 'Chrome Skin', description: 'Give your machine a sleek metallic look.', price: 800, icon: <Paintbrush className="w-5 h-5" /> },
+    { id: 'skin_fire', name: 'Fire Decal', description: 'Show your speed with custom flame decals.', price: 1000, icon: <Flame className="w-5 h-5" /> },
   ];
 
   const hasUpgrade = (id: string) => upgrades.some(u => u.id === id);
@@ -1139,8 +1174,9 @@ export default function App() {
   }, [gameState, canvasSize, gearRatio]);
 
   const addGear = (x: number, y: number) => {
-    sounds.init();
-    sounds.playClick();
+      sounds.init();
+      sounds.playBackgroundMusic();
+      sounds.playClick();
     const id = `${x}-${y}`;
     const existingGear = gears.find(g => g.id === id);
     if (existingGear) {
@@ -1374,6 +1410,15 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Shopping Cart Button */}
+              <button 
+                onClick={() => setGameState('shop')}
+                className="bg-rose-600 p-3 rounded-xl shadow-lg shadow-rose-600/30 border border-rose-400 hover:bg-rose-500 transition-all active:scale-90"
+              >
+                <ShoppingCart className="w-5 h-5 text-white" />
+              </button>
+            </div>
 
               <div className="flex gap-4 items-center">
                 <button 
