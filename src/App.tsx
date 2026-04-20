@@ -1208,7 +1208,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="h-screen w-full flex flex-col relative overflow-hidden bg-gradient-to-b from-blue-950 via-blue-900 to-[#111]">
+      <main className="h-screen w-full flex flex-col relative overflow-hidden bg-gradient-to-b from-blue-600 via-blue-400 to-blue-900">
         {/* Race View - Full Screen Container */}
         <div className="flex-1 relative overflow-hidden flex flex-col">
           <div className="flex-1 relative bg-transparent overflow-hidden flex flex-col">
@@ -1281,90 +1281,88 @@ export default function App() {
               </div>
             </div>
 
-            {/* Dashboard Overlay - Bottom Anchored */}
-            <div className="absolute bottom-32 left-4 right-4 flex justify-between items-end pointer-events-none z-30">
-              <div className="flex flex-col gap-6">
-                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-3 flex gap-12 shadow-xl">
+            {/* Dashboard and Thermal Overlays - Anchored to Corners */}
+            <div className="absolute bottom-32 left-4 z-30 pointer-events-none">
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-3 flex gap-12 shadow-xl">
+                <div className="text-center">
+                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
+                  <p className="text-5xl font-mono font-black text-rose-500 italic">
+                    {(currentSpeed / 10).toFixed(0)}
+                    <span className="text-xs ml-1 opacity-60 text-white">KM/H</span>
+                  </p>
+                </div>
+                <div className="w-[1px] bg-white/10" />
+                {gameMode === 'multi' && Object.values(otherPlayers).length > 0 ? (
                   <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                    <p className="text-5xl font-mono font-black text-rose-500 italic">
-                      {(currentSpeed / 10).toFixed(0)}
-                      <span className="text-xs ml-1 opacity-60 text-white">KM/H</span>
+                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap to Rival</p>
+                    <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                      {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
+                        <span className="text-xs ml-1 opacity-40 text-white font-black italic">M</span>
                     </p>
                   </div>
-                  <div className="w-[1px] bg-white/10" />
-                  {gameMode === 'multi' && Object.values(otherPlayers).length > 0 ? (
-                    <div className="text-center">
-                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap to Rival</p>
-                      <p className={`text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
-                        {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
-                          <span className="text-xs ml-1 opacity-40 text-white font-black italic">M</span>
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                      <p className="text-4xl font-mono font-black text-blue-400 italic">
-                        {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Thermal HUD - Circular Gauges */}
-                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex gap-10 shadow-xl pointer-events-none">
-                  <div className="relative flex flex-col items-center">
-                    <div className="relative w-16 h-16 flex items-center justify-center">
-                      <svg className="w-full h-full -rotate-90">
-                        <circle cx="32" cy="32" r="28" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                        <motion.circle 
-                          cx="32" cy="32" r="28" fill="transparent" 
-                          stroke={engineTemp > 80 ? '#f43f5e' : engineTemp > 65 ? '#f59e0b' : '#3b82f6'} 
-                          strokeWidth="6" 
-                          strokeDasharray="175.9"
-                          animate={{ strokeDashoffset: 175.9 - (175.9 * (engineTemp / 90)) }}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className={`text-sm font-mono font-black ${engineTemp > 80 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{engineTemp.toFixed(0)}°</span>
-                      </div>
-                    </div>
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
-                      <Thermometer className="w-2 h-2" />
-                      Engine
-                    </span>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                    <p className="text-4xl font-mono font-black text-blue-400 italic">
+                      {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
+                    </p>
                   </div>
-
-                  <div className="relative flex flex-col items-center">
-                    <div className="relative w-16 h-16 flex items-center justify-center">
-                      <svg className="w-full h-full -rotate-90">
-                        <circle cx="32" cy="32" r="28" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                        <motion.circle 
-                          cx="32" cy="32" r="28" fill="transparent" 
-                          stroke={brakeTemp > 80 ? '#f43f5e' : brakeTemp > 65 ? '#f59e0b' : '#10b981'} 
-                          strokeWidth="6" 
-                          strokeDasharray="175.9"
-                          animate={{ strokeDashoffset: 175.9 - (175.9 * Math.min(1, brakeTemp / 100)) }}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className={`text-sm font-mono font-black ${brakeTemp > 80 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{brakeTemp.toFixed(0)}°</span>
-                      </div>
-                    </div>
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
-                      <Zap className="w-2 h-2 text-yellow-400" />
-                      Brakes
-                    </span>
-                  </div>
-                </div>
-              </div>
-
+                )}
               </div>
             </div>
 
-            <div className="flex-1 relative overflow-hidden bg-[#000]">
+            <div className="absolute bottom-32 right-4 z-30 pointer-events-none">
+              {/* Thermal HUD - Circular Gauges */}
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 flex gap-10 shadow-xl">
+                <div className="relative flex flex-col items-center">
+                  <div className="relative w-16 h-16 flex items-center justify-center">
+                    <svg className="w-full h-full -rotate-90">
+                      <circle cx="32" cy="32" r="28" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+                      <motion.circle 
+                        cx="32" cy="32" r="28" fill="transparent" 
+                        stroke={engineTemp > 80 ? '#f43f5e' : engineTemp > 65 ? '#f59e0b' : '#3b82f6'} 
+                        strokeWidth="6" 
+                        strokeDasharray="175.9"
+                        animate={{ strokeDashoffset: 175.9 - (175.9 * (engineTemp / 90)) }}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className={`text-sm font-mono font-black ${engineTemp > 80 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{engineTemp.toFixed(0)}°</span>
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
+                    <Thermometer className="w-2 h-2" />
+                    Engine
+                  </span>
+                </div>
+
+                <div className="relative flex flex-col items-center">
+                  <div className="relative w-16 h-16 flex items-center justify-center">
+                    <svg className="w-full h-full -rotate-90">
+                      <circle cx="32" cy="32" r="28" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+                      <motion.circle 
+                        cx="32" cy="32" r="28" fill="transparent" 
+                        stroke={brakeTemp > 80 ? '#f43f5e' : brakeTemp > 65 ? '#f59e0b' : '#10b981'} 
+                        strokeWidth="6" 
+                        strokeDasharray="175.9"
+                        animate={{ strokeDashoffset: 175.9 - (175.9 * Math.min(1, brakeTemp / 100)) }}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className={`text-sm font-mono font-black ${brakeTemp > 80 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{brakeTemp.toFixed(0)}°</span>
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-black text-white/40 uppercase tracking-widest mt-2 flex items-center gap-1">
+                    <Zap className="w-2 h-2 text-yellow-400" />
+                    Brakes
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 relative overflow-hidden bg-transparent">
               <div ref={canvasRef} className="w-full h-full relative">
                 {/* Boost Notification */}
                 <AnimatePresence>
@@ -1421,7 +1419,7 @@ export default function App() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                <div className="absolute inset-0 pointer-events-none z-20 shadow-[inset_0_0_150px_rgba(0,0,0,0.7)]" />
+                <div className="absolute inset-0 pointer-events-none z-20 shadow-[inset_0_0_150px_rgba(0,0,0,0.3)]" />
               </div>
 
               {/* Progress Bar - Moved to Bottom edge for better visibility and no header overlap */}
@@ -1827,6 +1825,7 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+        </div>
 
         {/* Missions Overlay */}
         <AnimatePresence>
