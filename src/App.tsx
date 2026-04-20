@@ -430,16 +430,15 @@ export default function App() {
     if (gameMode !== 'multi' || multiRoomConfirmed) return;
     const roomsQuery = query(
       collection(db, 'rooms'),
-      orderBy('createdAt', 'desc'),
-      limit(50)
+      where('status', '==', 'waiting'),
+      limit(100)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
-      const rooms = snapshot.docs
-        .filter(doc => doc.data().status === 'waiting')
-        .map(doc => ({ 
+      const rooms = snapshot.docs.map(doc => ({ 
           id: doc.id, 
           createdAt: doc.data().createdAt?.toMillis() || Date.now() 
         }));
+      rooms.sort((a, b) => b.createdAt - a.createdAt);
       setAvailableRooms(rooms);
     });
     return () => unsubscribe();
@@ -453,12 +452,9 @@ export default function App() {
       }
     });
 
-    if (gameMode !== 'multi' || !auth.currentUser) {
-      if (gameMode === 'multi') setConnectionStatus('connecting');
-      else {
-        setConnectionStatus('disconnected');
-        setOtherPlayers({});
-      }
+    if (gameMode !== 'multi' || !auth.currentUser || !multiRoomConfirmed) {
+      setConnectionStatus('disconnected');
+      setOtherPlayers({});
       return () => unsubAuth();
     }
 
