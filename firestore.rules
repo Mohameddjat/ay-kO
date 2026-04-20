@@ -13,8 +13,8 @@ service cloud.firestore {
     
     function isValidRoom(data) {
       return data.status in ['waiting', 'racing', 'finished']
-        && (data.get('winnerId', '') is string)
-        && (data.get('winReason', '') is string);
+        && (data.get('winnerId', '') == null || data.get('winnerId', '') is string)
+        && (data.get('winReason', '') == null || data.get('winReason', '') is string);
     }
 
     function isValidPlayer(data) {
@@ -44,7 +44,7 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isOwner(playerId) && isValidPlayer(request.resource.data);
         allow update: if isOwner(playerId) && isValidPlayer(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['x', 'y', 'angle', 'progress', 'temp', 'brakeTemp', 'gearRatio', 'isExploded', 'lastUpdate']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['id', 'x', 'y', 'angle', 'progress', 'temp', 'brakeTemp', 'gearRatio', 'isExploded', 'lastUpdate', 'isReady']);
         allow delete: if isOwner(playerId);
       }
     }

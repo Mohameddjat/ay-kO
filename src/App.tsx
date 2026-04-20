@@ -227,8 +227,13 @@ export default function App() {
     localStorage.setItem('gear_race_gears', JSON.stringify(gears));
   }, [gears]);
   const [gameState, setGameState] = useState<'setup' | 'racing' | 'exploded' | 'finished'>('setup');
+  const gameStateRef = useRef(gameState);
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
   const [multiplayerWinner, setMultiplayerWinner] = useState<{ id: string, reason: string } | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
+  const isWaitingRef = useRef(isWaiting);
+  useEffect(() => { isWaitingRef.current = isWaiting; }, [isWaiting]);
   const [gameMode, setGameMode] = useState<'single' | 'multi' | null>(null);
   const [availableRooms, setAvailableRooms] = useState<{id: string, createdAt: any}[]>([]);
   const [multiRoomConfirmed, setMultiRoomConfirmed] = useState(false);
@@ -425,16 +430,16 @@ export default function App() {
     if (gameMode !== 'multi' || multiRoomConfirmed) return;
     const roomsQuery = query(
       collection(db, 'rooms'),
-      where('status', '==', 'waiting'),
-      limit(20)
+      orderBy('createdAt', 'desc'),
+      limit(50)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
-      const rooms = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        createdAt: doc.data().createdAt?.toMillis() || Date.now() 
-      }));
-      // Sort locally to avoid needing complex composite indexes
-      rooms.sort((a, b) => b.createdAt - a.createdAt);
+      const rooms = snapshot.docs
+        .filter(doc => doc.data().status === 'waiting')
+        .map(doc => ({ 
+          id: doc.id, 
+          createdAt: doc.data().createdAt?.toMillis() || Date.now() 
+        }));
       setAvailableRooms(rooms);
     });
     return () => unsubscribe();
@@ -479,6 +484,20 @@ export default function App() {
           winReason: null
         });
       }
+      
+      // Ensure player exists in room to show up in other people's lobbies
+      await setDoc(doc(db, 'rooms', roomId, 'players', myUid), {
+        id: myUid,
+        isReady: isWaitingRef.current, // Keep true if they already clicked ready
+        progress: 0,
+        x: 0,
+        y: 0,
+        temp: 20,
+        brakeTemp: 20,
+        isExploded: false,
+        lastUpdate: serverTimestamp()
+      }, { merge: true });
+
       setConnectionStatus('connected');
     };
     initRoom();
@@ -488,16 +507,22 @@ export default function App() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       
-      if (data.status === 'racing' && (gameState === 'setup' || isWaiting)) {
+      const currentGameState = gameStateRef.current;
+      const currentIsWaiting = isWaitingRef.current;
+
+      if (data.status === 'racing' && (currentGameState === 'setup' || currentIsWaiting)) {
         setIsWaiting(false);
         setGameState('racing');
         setMultiplayerWinner(null);
       } else if (data.status === 'finished') {
-        if (gameState === 'racing' || gameState === 'exploded' || gameState === 'finished') {
-          if (data.winnerId && (!multiplayerWinner || multiplayerWinner.id !== data.winnerId)) {
-            setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
-            setGameState('finished');
-          }
+        if (currentGameState === 'racing' || currentGameState === 'exploded' || currentGameState === 'finished') {
+          setGameState('finished');
+          setMultiplayerWinner(prev => {
+            if (!prev || prev.id !== data.winnerId) {
+              return { id: data.winnerId, reason: data.winReason || 'Race Finished' };
+            }
+            return prev;
+          });
         }
       }
     });
@@ -516,7 +541,7 @@ export default function App() {
       const allPlayers = snapshot.docs.map(d => d.data());
       const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
       
-      if (allReady && gameState === 'setup') {
+      if (allReady && gameStateRef.current === 'setup') {
         updateDoc(roomRef, { status: 'racing' }).catch(console.error);
       }
     });
@@ -1654,10 +1679,8 @@ export default function App() {
                           <button 
                             onClick={() => {
                               if (gameMode === 'multi' && auth.currentUser) {
-                                const roomRef = doc(db, 'rooms', roomId);
                                 const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
-                                updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
-                                updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                                deleteDoc(playerRef).catch(console.error);
                               }
                               setGameMode(null);
                               setMultiRoomConfirmed(false);
