@@ -555,7 +555,13 @@ export default function App() {
           players[d.id] = data;
           
           // Detect rival explosion check (needs latest gameState from closure)
-          // Since it's a listener, it will see the state from when Effect was created
+          if (data.isExploded && gameState === 'racing') {
+            updateDoc(roomRef, {
+              status: 'finished',
+              winnerId: myUid,
+              winReason: 'rival engine failure'
+            }).catch(console.error);
+          }
         }
       });
       setOtherPlayers(players);
@@ -1129,6 +1135,13 @@ export default function App() {
 
       if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
+        if (gameMode === 'multi' && auth.currentUser) {
+          updateDoc(doc(db, 'rooms', roomId), {
+            status: 'finished',
+            winnerId: auth.currentUser.uid,
+            winReason: 'crossing the finish line'
+          }).catch(console.error);
+        }
         sounds.stopEngine();
         return;
       }
