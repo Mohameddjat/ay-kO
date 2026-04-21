@@ -473,6 +473,7 @@ export default function App() {
 
     // Ensure room exists and is reset if finished
     const initRoom = async () => {
+      if (gameState !== 'setup') return;
       const snap = await getDoc(roomRef);
       if (!snap.exists()) {
         await setDoc(roomRef, {
@@ -529,7 +530,17 @@ export default function App() {
       const players: Record<string, PlayerState> = {};
       snapshot.forEach((d) => {
         if (d.id !== myUid) {
-          players[d.id] = d.data() as PlayerState;
+          const data = d.data() as PlayerState;
+          players[d.id] = data;
+          
+          // Detect rival explosion
+          if (data.isExploded && gameState === 'racing') {
+            updateDoc(roomRef, {
+              status: 'finished',
+              winnerId: myUid,
+              winReason: 'rival engine failure'
+            }).catch(console.error);
+          }
         }
       });
       setOtherPlayers(players);
@@ -559,7 +570,7 @@ export default function App() {
       window.removeEventListener('beforeunload', handleUnload);
       handleUnload();
     };
-  }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser]);
+  }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser, gameState, isWaiting]);
 
   // Gear Connectivity Logic (BFS)
   useEffect(() => {
@@ -732,18 +743,9 @@ export default function App() {
       if (localEngineTemp >= 90) {
         setGameState('exploded');
         if (gameMode === 'multi' && auth.currentUser) {
-          // Fetch the opponent from the backend to guarantee we get the correct ID, rather than relying on potentially stale closure state
-          getDocs(collection(db, 'rooms', roomId, 'players')).then(snap => {
-            let otherId = 'SYSTEM';
-            snap.forEach(d => {
-              if (d.id !== auth.currentUser!.uid) otherId = d.id;
-            });
-            updateDoc(doc(db, 'rooms', roomId), {
-              status: 'finished',
-              winnerId: otherId,
-              winReason: 'opponent exploded'
-            }).catch(console.error);
-          });
+          // Just update our own state, the winner's listener or common room listener will handle the rest
+          const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+          updateDoc(playerRef, { isExploded: true }).catch(console.error);
         }
         sounds.stopEngine();
         return;
@@ -1923,7 +1925,7 @@ export default function App() {
 
             {/* Result Overlays */}
             <AnimatePresence>
-              {gameState === 'exploded' && gameMode === 'single' && (
+              {gameState === 'exploded' && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 1.1 }}
                   animate={{ opacity: 1, scale: 1 }}
