@@ -426,16 +426,22 @@ export default function App() {
     const roomsQuery = query(
       collection(db, 'rooms'),
       where('status', '==', 'waiting'),
-      limit(20)
+      limit(50)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
-      const rooms = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        createdAt: doc.data().createdAt?.toMillis() || Date.now() 
-      }));
-      // Sort locally to avoid needing complex composite indexes
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const rooms = snapshot.docs
+        .map(doc => ({ 
+          id: doc.id, 
+          createdAt: doc.data().createdAt?.toMillis() || Date.now(),
+          status: doc.data().status
+        }))
+        // Ensure we only show recent waiting rooms
+        .filter(room => room.status === 'waiting' && room.createdAt > oneHourAgo);
+        
+      // Sort by newest first
       rooms.sort((a, b) => b.createdAt - a.createdAt);
-      setAvailableRooms(rooms);
+      setAvailableRooms(rooms.slice(0, 20));
     });
     return () => unsubscribe();
   }, [gameMode, multiRoomConfirmed]);
@@ -479,6 +485,21 @@ export default function App() {
           winReason: null
         });
       }
+      
+      // Register player immediately so they appear in the player list for others
+      await setDoc(doc(db, 'rooms', roomId, 'players', myUid), {
+        id: myUid,
+        isReady: false,
+        progress: 0,
+        x: 0,
+        y: 0,
+        temp: 20,
+        brakeTemp: 20,
+        gearRatio: 0,
+        isExploded: false,
+        lastUpdate: serverTimestamp()
+      }, { merge: true });
+
       setConnectionStatus('connected');
     };
     initRoom();
@@ -1663,8 +1684,15 @@ export default function App() {
 
                       <div className="flex flex-col gap-4 w-full max-w-sm">
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                            // Pre-create room to ensure immediate visibility in the list for others
+                            if (auth.currentUser) {
+                              await setDoc(doc(db, 'rooms', newId), {
+                                status: 'waiting',
+                                createdAt: serverTimestamp()
+                              });
+                            }
                             setRoomId(newId);
                             setMultiRoomConfirmed(true);
                           }}

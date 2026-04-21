@@ -16,6 +16,7 @@ export interface PlayerState {
   brakeTemp: number;
   progress: number;
   isExploded: boolean;
+  isReady?: boolean;
 }
 
 export interface GameRoom {
