@@ -555,7 +555,7 @@ export default function App() {
           players[d.id] = data;
           
           // Detect rival explosion check (needs latest gameState from closure)
-          if (data.isExploded && gameState === 'racing') {
+          if (data.isExploded && (gameState === 'racing' || gameState === 'setup')) {
             updateDoc(roomRef, {
               status: 'finished',
               winnerId: myUid,
@@ -1136,6 +1136,7 @@ export default function App() {
       if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
         if (gameMode === 'multi' && auth.currentUser) {
+          setMultiplayerWinner({ id: auth.currentUser.uid, reason: 'crossing the finish line' });
           updateDoc(doc(db, 'rooms', roomId), {
             status: 'finished',
             winnerId: auth.currentUser.uid,
@@ -1941,13 +1942,14 @@ export default function App() {
             )}
 
             {/* Result Overlays */}
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               {gameState === 'exploded' && (
                 <motion.div 
+                  key="exploded-screen"
                   initial={{ opacity: 0, scale: 1.1 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 1.1 }}
-                  className="absolute inset-0 bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden"
+                  className="absolute inset-0 bg-red-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center z-[60] overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.2)_0%,transparent_70%)] animate-pulse" />
                   <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
@@ -1983,66 +1985,72 @@ export default function App() {
                 </motion.div>
               )}
 
-              {gameState === 'finished' && (() => {
-                const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
-                return (
+              {gameState === 'finished' && (
                 <motion.div 
+                  key="finished-screen"
                   initial={{ opacity: 0, y: 50 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`absolute inset-0 ${isWinner ? 'bg-green-950/95' : 'bg-red-950/95'} backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden`}
+                  exit={{ opacity: 0, y: -50 }}
+                  className={`absolute inset-0 ${(gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid)) ? 'bg-green-950/95' : 'bg-red-950/95'} backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center z-[60] overflow-hidden`}
                 >
-                  <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,${isWinner ? 'rgba(34,197,94,0.2)' : 'rgba(220,38,38,0.2)'}_0%,transparent_70%)] animate-pulse`} />
-                  {isWinner ? (
-                    <Trophy className="w-24 h-24 text-yellow-500 mb-8 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)] animate-bounce" />
-                  ) : (
-                    <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
-                      <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
-                      <AlertTriangle className="w-12 h-12 text-white relative z-10" />
-                    </div>
-                  )}
-                  
-                  {gameMode === 'multi' && multiplayerWinner ? (
-                    <>
-                      <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">
-                        {isWinner ? 'VICTORY SECURED' : 'DEFEAT ACKNOWLEDGED'}
-                      </h3>
-                      <p className={`mb-10 max-w-lg text-lg italic leading-tight ${isWinner ? 'text-green-200/60' : 'text-red-200/60'}`}>
-                        {isWinner 
-                          ? `Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
-                          : `Rival has achieved completion via ${multiplayerWinner.reason}. Retrying synchronization recommended.`}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">GLORY ACHIEVED</h3>
-                      <p className="text-green-200/60 mb-10 max-w-sm text-lg italic leading-tight">Your machine has survived the gauntlet. You are the ultimate master of mechanics.</p>
-                    </>
-                  )}
-                  
-                  <button 
-                    onClick={() => {
-                      if (gameMode === 'multi' && auth.currentUser) {
-                        const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
-                        updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
-                        updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
-                      }
-                      setIsWaiting(false);
-                      setMultiplayerWinner(null);
-                      setGameState('setup');
-                      setGameMode(null);
-                      setMultiRoomConfirmed(false);
-                      setDistance(0);
-                      setCurrentSpeed(0);
-                    }}
-                    className={`relative z-10 bg-white ${isWinner ? 'text-green-950 hover:bg-green-50' : 'text-red-950 hover:bg-red-50'} px-12 py-4 rounded-2xl font-black text-xl active:scale-95 transition-all shadow-2xl shadow-black/40`}
-                  >
-                    CONTINUE MISSION
-                  </button>
-                  <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
+                  {(() => {
+                    const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
+                    return (
+                      <>
+                        <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,${isWinner ? 'rgba(34,197,94,0.2)' : 'rgba(220,38,38,0.2)'}_0%,transparent_70%)] animate-pulse`} />
+                        {isWinner ? (
+                          <Trophy className="w-24 h-24 text-yellow-500 mb-8 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)] animate-bounce" />
+                        ) : (
+                          <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
+                            <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
+                            <AlertTriangle className="w-12 h-12 text-white relative z-10" />
+                          </div>
+                        )}
+                        
+                        {gameMode === 'multi' && multiplayerWinner ? (
+                          <>
+                            <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">
+                              {isWinner ? 'VICTORY SECURED' : 'DEFEAT ACKNOWLEDGED'}
+                            </h3>
+                            <p className={`mb-10 max-w-lg text-lg italic leading-tight ${isWinner ? 'text-green-200/60' : 'text-red-200/60'}`}>
+                              {isWinner 
+                                ? `Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
+                                : `Rival has achieved completion via ${multiplayerWinner.reason}. Retrying synchronization recommended.`}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">GLORY ACHIEVED</h3>
+                            <p className="text-green-200/60 mb-10 max-w-sm text-lg italic leading-tight">Your machine has survived the gauntlet. You are the ultimate master of mechanics.</p>
+                          </>
+                        )}
+                        
+                        <button 
+                          onClick={() => {
+                            if (gameMode === 'multi' && auth.currentUser) {
+                              const roomRef = doc(db, 'rooms', roomId);
+                              const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                              updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                              updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                            }
+                            setIsWaiting(false);
+                            setMultiplayerWinner(null);
+                            setGameState('setup');
+                            setGameMode(null);
+                            setMultiRoomConfirmed(false);
+                            setDistance(0);
+                            setCurrentSpeed(0);
+                          }}
+                          className={`relative z-10 bg-white ${isWinner ? 'text-green-950 hover:bg-green-50' : 'text-red-950 hover:bg-red-50'} px-12 py-4 rounded-2xl font-black text-xl active:scale-95 transition-all shadow-2xl shadow-black/40`}
+                        >
+                          CONTINUE MISSION
+                        </button>
+                        <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
+                      </>
+                    );
+                  })()}
                 </motion.div>
-                );
-              })}
+              )}
             </AnimatePresence>
           </div>
         </div>
