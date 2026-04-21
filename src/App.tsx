@@ -245,6 +245,7 @@ export default function App() {
   const [playerLane, setPlayerLane] = useState(0); // -1, 0, 1
   const [targetLane, setTargetLane] = useState(0);
   const targetLaneRef = useRef(0);
+  const lastSyncTimeRef = useRef(0);
   const lastLaneChangeZRef = useRef(0);
   const nextObstacleZRef = useRef(0);
   const nearMissTextRef = useRef<{text: string, x: number, y: number, opacity: number} | null>(null);
@@ -1117,33 +1118,24 @@ export default function App() {
 
       ctx.restore();
 
-      // Emit state to Firebase
+      // Emit state to Firebase (throttled to 5Hz to save quota)
       if (gameMode === 'multi' && auth.currentUser) {
-        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
-        setDoc(playerRef, {
-          id: auth.currentUser.uid,
-          x: playerLane,
-          y: localDistance,
-          progress: localDistance / TRACK_LENGTH,
-          temp: localEngineTemp,
-          brakeTemp: brakeTemp,
-          gearRatio: gearRatio,
-          isExploded: gameState === 'exploded',
-          lastUpdate: serverTimestamp()
-        }, { merge: true });
-      }
-
-      if (localDistance >= TRACK_LENGTH) {
-        setGameState('finished');
-        if (gameMode === 'multi' && auth.currentUser) {
-          updateDoc(doc(db, 'rooms', roomId), {
-            status: 'finished',
-            winnerId: auth.currentUser.uid,
-            winReason: 'crossing the finish line'
-          }).catch(console.error);
+        const now = Date.now();
+        if (!lastSyncTimeRef.current || now - lastSyncTimeRef.current > 200) {
+          lastSyncTimeRef.current = now;
+          const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+          setDoc(playerRef, {
+            id: auth.currentUser.uid,
+            x: playerLane,
+            y: localDistance,
+            progress: localDistance / TRACK_LENGTH,
+            temp: localEngineTemp,
+            brakeTemp: brakeTemp,
+            gearRatio: gearRatio,
+            isExploded: gameState === 'exploded',
+            lastUpdate: serverTimestamp()
+          }, { merge: true }).catch(() => {}); // silently catch quota errors in main game loop
         }
-        sounds.stopEngine();
-        return;
       }
 
       animFrame = requestAnimationFrame(update);
