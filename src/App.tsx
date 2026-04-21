@@ -426,22 +426,23 @@ export default function App() {
     const roomsQuery = query(
       collection(db, 'rooms'),
       where('status', '==', 'waiting'),
-      limit(50)
+      orderBy('createdAt', 'desc'),
+      limit(20)
     );
     const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
       const oneHourAgo = Date.now() - 60 * 60 * 1000;
       const rooms = snapshot.docs
-        .map(doc => ({ 
-          id: doc.id, 
-          createdAt: doc.data().createdAt?.toMillis() || Date.now(),
-          status: doc.data().status
-        }))
-        // Ensure we only show recent waiting rooms
-        .filter(room => room.status === 'waiting' && room.createdAt > oneHourAgo);
+        .map(doc => {
+          const data = doc.data();
+          return { 
+            id: doc.id, 
+            createdAt: data.createdAt?.toMillis() || Date.now(),
+            status: data.status
+          };
+        })
+        .filter(room => room.createdAt > oneHourAgo);
         
-      // Sort by newest first
-      rooms.sort((a, b) => b.createdAt - a.createdAt);
-      setAvailableRooms(rooms.slice(0, 20));
+      setAvailableRooms(rooms);
     });
     return () => unsubscribe();
   }, [gameMode, multiRoomConfirmed]);
@@ -454,7 +455,7 @@ export default function App() {
       }
     });
 
-    if (gameMode !== 'multi' || !auth.currentUser) {
+    if (gameMode !== 'multi' || !multiRoomConfirmed || !auth.currentUser) {
       if (gameMode === 'multi') setConnectionStatus('connecting');
       else {
         setConnectionStatus('disconnected');
@@ -537,14 +538,17 @@ export default function App() {
       const allPlayers = snapshot.docs.map(d => d.data());
       const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
       
-      if (allReady && gameState === 'setup') {
+      // CRITICAL: Only trigger start if we are in this specific room and confirmed
+      if (allReady && gameState === 'setup' && multiRoomConfirmed) {
         updateDoc(roomRef, { status: 'racing' }).catch(console.error);
       }
     });
 
     // Cleanup my player entry on disconnect/leave
     const handleUnload = () => {
-      deleteDoc(doc(db, 'rooms', roomId, 'players', myUid));
+      if (roomId && myUid) {
+        deleteDoc(doc(db, 'rooms', roomId, 'players', myUid)).catch(() => {});
+      }
     };
     window.addEventListener('beforeunload', handleUnload);
 
@@ -555,7 +559,7 @@ export default function App() {
       window.removeEventListener('beforeunload', handleUnload);
       handleUnload();
     };
-  }, [roomId, gameMode, auth.currentUser]);
+  }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser]);
 
   // Gear Connectivity Logic (BFS)
   useEffect(() => {
@@ -1776,7 +1780,23 @@ export default function App() {
                             {gameMode === 'multi' && <> | Sector: <span className="text-white uppercase font-black text-rose-400">{roomId}</span></>}
                           </p>
                           {gameMode === 'multi' && (
-                            <div className="flex flex-col gap-2 items-center">
+                            <div className="flex flex-col gap-3 items-center w-full max-w-xs mt-4">
+                              <div className="flex flex-wrap justify-center gap-2">
+                                {/* Current Player */}
+                                <div className="flex items-center gap-2 bg-white/10 border border-white/20 px-3 py-2 rounded-xl">
+                                  <div className={`w-2 h-2 rounded-full ${isWaiting ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-white/20'}`} />
+                                  <span className="text-[10px] font-black text-white uppercase tracking-widest">YOU</span>
+                                </div>
+                                
+                                {/* Other Players */}
+                                {Object.values(otherPlayers).map((p: any) => (
+                                  <div key={p.id} className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 rounded-xl">
+                                    <div className={`w-2 h-2 rounded-full ${p.isReady ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-rose-500/40 animate-pulse'}`} />
+                                    <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">P-{p.id.slice(0, 4)}</span>
+                                  </div>
+                                ))}
+                              </div>
+
                               <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full">
                                 <Users className="w-3 h-3 text-rose-400" />
                                 <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">
