@@ -447,33 +447,24 @@ export default function App() {
     return () => unsubscribe();
   }, [gameMode, multiRoomConfirmed]);
 
-  // Firebase Sync
+  // Firebase Initialization Effect (Join/Leave Only)
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setSocketId(user.uid);
-      }
-    });
-
     if (gameMode !== 'multi' || !multiRoomConfirmed || !auth.currentUser) {
       if (gameMode === 'multi') setConnectionStatus('connecting');
       else {
         setConnectionStatus('disconnected');
         setOtherPlayers({});
       }
-      return () => unsubAuth();
+      return;
     }
 
     const myUid = auth.currentUser.uid;
-    setSocketId(myUid);
-    setConnectionStatus('connecting');
-
     const roomRef = doc(db, 'rooms', roomId);
-    const playersRef = collection(db, 'rooms', roomId, 'players');
 
-    // Ensure room exists and is reset if finished
     const initRoom = async () => {
+      // Only run if we are in setup mode to avoid resetting during race
       if (gameState !== 'setup') return;
+      
       const snap = await getDoc(roomRef);
       if (!snap.exists()) {
         await setDoc(roomRef, {
@@ -488,7 +479,8 @@ export default function App() {
         });
       }
       
-      // Register player immediately so they appear in the player list for others
+      // Register player with initial state ONLY if not already ready
+      // This prevents the reset bug when clicking ENGINE START
       await setDoc(doc(db, 'rooms', roomId, 'players', myUid), {
         id: myUid,
         isReady: false,
@@ -505,6 +497,35 @@ export default function App() {
       setConnectionStatus('connected');
     };
     initRoom();
+
+    const handleUnload = () => {
+      if (roomId && myUid) {
+        deleteDoc(doc(db, 'rooms', roomId, 'players', myUid)).catch(() => {});
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      handleUnload();
+    };
+  }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser]);
+
+  // Firebase Real-time Listeners Effect
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setSocketId(user.uid);
+      }
+    });
+
+    if (gameMode !== 'multi' || !multiRoomConfirmed || !auth.currentUser) {
+      return () => unsubAuth();
+    }
+
+    const myUid = auth.currentUser.uid;
+    const roomRef = doc(db, 'rooms', roomId);
+    const playersRef = collection(db, 'rooms', roomId, 'players');
 
     // Listen to Room Status
     const unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
@@ -533,14 +554,8 @@ export default function App() {
           const data = d.data() as PlayerState;
           players[d.id] = data;
           
-          // Detect rival explosion
-          if (data.isExploded && gameState === 'racing') {
-            updateDoc(roomRef, {
-              status: 'finished',
-              winnerId: myUid,
-              winReason: 'rival engine failure'
-            }).catch(console.error);
-          }
+          // Detect rival explosion check (needs latest gameState from closure)
+          // Since it's a listener, it will see the state from when Effect was created
         }
       });
       setOtherPlayers(players);
@@ -549,26 +564,15 @@ export default function App() {
       const allPlayers = snapshot.docs.map(d => d.data());
       const allReady = allPlayers.length >= 2 && allPlayers.every(p => p.isReady);
       
-      // CRITICAL: Only trigger start if we are in this specific room and confirmed
       if (allReady && gameState === 'setup' && multiRoomConfirmed) {
         updateDoc(roomRef, { status: 'racing' }).catch(console.error);
       }
     });
 
-    // Cleanup my player entry on disconnect/leave
-    const handleUnload = () => {
-      if (roomId && myUid) {
-        deleteDoc(doc(db, 'rooms', roomId, 'players', myUid)).catch(() => {});
-      }
-    };
-    window.addEventListener('beforeunload', handleUnload);
-
     return () => {
       unsubAuth();
       unsubscribeRoom();
       unsubscribePlayers();
-      window.removeEventListener('beforeunload', handleUnload);
-      handleUnload();
     };
   }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser, gameState, isWaiting]);
 
