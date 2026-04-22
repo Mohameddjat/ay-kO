@@ -38,6 +38,7 @@ import {
   X
 } from 'lucide-react';
 import { Gear, PlayerState, GameRoom } from './types';
+import { audioBus } from './lib/audio';
 
 const GRID_COLS = 6;
 const GRID_ROWS = 2;
@@ -464,11 +465,37 @@ export default function App() {
     }
     if (level > lastLevelRef.current) {
       sounds.playLevelUp();
+      audioBus.playSfx('levelup');
       lastLevelRef.current = level;
     } else {
       lastLevelRef.current = level;
     }
   }, [level]);
+
+  // Mute toggle (persisted)
+  const [isMuted, setIsMuted] = useState(() => localStorage.getItem('gear_race_muted') === '1');
+  useEffect(() => {
+    audioBus.setMusicMuted(isMuted);
+    audioBus.setSfxMuted(isMuted);
+    localStorage.setItem('gear_race_muted', isMuted ? '1' : '0');
+  }, [isMuted]);
+
+  // Background music director — picks a track based on the game state.
+  useEffect(() => {
+    audioBus.init();
+    if (gameState === 'racing') {
+      // Alternate between two race tracks for variety
+      const track = Math.random() < 0.5 ? 'race' : 'race2';
+      audioBus.playMusic(track, { loop: true, fadeMs: 800 });
+    } else if (gameState === 'finished') {
+      audioBus.playMusic('victoryMusic', { loop: false, fadeMs: 600 });
+    } else if (gameState === 'exploded') {
+      audioBus.stopMusic(400);
+    } else {
+      // setup / shop / menu
+      audioBus.playMusic('menu', { loop: true, fadeMs: 800 });
+    }
+  }, [gameState]);
 
   const [boostTime, setBoostTime] = useState(0);
   const [lastBoostType, setLastBoostType] = useState<string | null>(null);
@@ -545,6 +572,7 @@ export default function App() {
       if (m.id === id && m.completed && !m.claimed) {
         addCredits(m.reward);
         sounds.playCoin();
+        audioBus.playSfx('coin');
         return { ...m, claimed: true };
       }
       return m;
@@ -583,6 +611,7 @@ export default function App() {
 
     if (isWinner) {
       sounds.playVictory();
+      audioBus.playSfx('victory');
       setTotalWins(w => w + 1);
       // Read each opponent's wallet and take 10%
       (async () => {
@@ -601,11 +630,13 @@ export default function App() {
         if (bountyTotal > 0) {
           addCredits(bountyTotal);
           sounds.playCoin();
+          audioBus.playSfx('coin');
         }
         setBountyResult({ amount: bountyTotal, type: 'won' });
       })();
     } else {
       sounds.playDefeat();
+      audioBus.playSfx('defeat');
       // Loser pays 10% of own wallet
       const loss = Math.floor(credits * 0.1);
       if (loss > 0) {
@@ -1071,6 +1102,7 @@ export default function App() {
           screenShake = 20; // Trigger screen shake
           localBoostTimer = 0; // Cancel boost on hit
           sounds.playCrash();
+          audioBus.playSfx('crash');
           return false;
         }
 
@@ -1095,6 +1127,7 @@ export default function App() {
               setLastBoostType('NEAR MISS');
               nearMissTextRef.current = { text: msg, x: 0, y: 0, opacity: 1 };
               sounds.playBoost();
+              audioBus.playSfx('boost');
             }
           }
         }
@@ -1419,7 +1452,8 @@ export default function App() {
 
   const addGear = (x: number, y: number) => {
     sounds.init();
-    sounds.playClick();
+    audioBus.init();
+    audioBus.playSfx('click');
     const id = `${x}-${y}`;
     const existingGear = gears.find(g => g.id === id);
     if (existingGear) {
@@ -1443,6 +1477,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-rose-500/30">
+      <button
+        onClick={() => { audioBus.init(); setIsMuted(m => !m); }}
+        title={isMuted ? 'Unmute audio' : 'Mute audio'}
+        aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
+        className="fixed top-3 right-3 z-50 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white transition-all"
+      >
+        {isMuted ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg>
+        )}
+      </button>
       <AnimatePresence>
         {gameState === 'shop' && (
           <motion.div 
