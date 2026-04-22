@@ -45,95 +45,249 @@ const CELL_SIZE = 60;
 const GEAR_TYPES = [16, 24, 32, 48, 64, 80, 96, 128];
 const TRACK_LENGTH = 100000;
 
-// Audio System
+// Audio System — multi-oscillator engine + richer SFX
 class SoundManager {
   private ctx: AudioContext | null = null;
-  private engineOsc: OscillatorNode | null = null;
-  private engineGain: GainNode | null = null;
+  private master: GainNode | null = null;
+  private engineParts: { oscs: OscillatorNode[]; gain: GainNode; filter: BiquadFilterNode; lfo: OscillatorNode; lfoGain: GainNode } | null = null;
 
   init() {
     if (this.ctx) return;
     this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.7;
+    this.master.connect(this.ctx.destination);
+  }
+
+  private dest() {
+    return this.master || this.ctx!.destination;
   }
 
   playClick() {
     if (!this.ctx) return;
+    const t = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, this.ctx.currentTime);
-    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.exponentialRampToValueAtTime(600, t + 0.06);
+    gain.gain.setValueAtTime(0.08, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.1);
+    gain.connect(this.dest());
+    osc.start(t);
+    osc.stop(t + 0.1);
   }
 
   playBoost() {
     if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Saw sweep
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(100, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.5);
-    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.5);
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(1100, t + 0.45);
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    const filt = this.ctx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.setValueAtTime(900, t);
+    filt.Q.value = 6;
+    osc.connect(filt);
+    filt.connect(gain);
+    gain.connect(this.dest());
+    osc.start(t);
+    osc.stop(t + 0.55);
+    // Whoosh noise burst
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.4, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = this.ctx.createGain();
+    ng.gain.value = 0.08;
+    const nf = this.ctx.createBiquadFilter();
+    nf.type = 'highpass';
+    nf.frequency.value = 1500;
+    noise.connect(nf);
+    nf.connect(ng);
+    ng.connect(this.dest());
+    noise.start(t);
   }
 
   playCrash() {
     if (!this.ctx) return;
-    const bufferSize = this.ctx.sampleRate * 0.5;
+    const t = this.ctx.currentTime;
+    const bufferSize = this.ctx.sampleRate * 0.7;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
     }
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
+    const filt = this.ctx.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.setValueAtTime(2500, t);
+    filt.frequency.exponentialRampToValueAtTime(150, t + 0.6);
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
-    noise.connect(gain);
-    gain.connect(this.ctx.destination);
-    noise.start();
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    noise.connect(filt);
+    filt.connect(gain);
+    gain.connect(this.dest());
+    noise.start(t);
+    // Low thump
+    const thump = this.ctx.createOscillator();
+    const tg = this.ctx.createGain();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(120, t);
+    thump.frequency.exponentialRampToValueAtTime(40, t + 0.25);
+    tg.gain.setValueAtTime(0.5, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    thump.connect(tg);
+    tg.connect(this.dest());
+    thump.start(t);
+    thump.stop(t + 0.35);
+  }
+
+  playLevelUp() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    notes.forEach((f, i) => {
+      const o = this.ctx!.createOscillator();
+      const g = this.ctx!.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, t + i * 0.1);
+      g.gain.setValueAtTime(0, t + i * 0.1);
+      g.gain.linearRampToValueAtTime(0.18, t + i * 0.1 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.45);
+      o.connect(g);
+      g.connect(this.dest());
+      o.start(t + i * 0.1);
+      o.stop(t + i * 0.1 + 0.5);
+    });
+  }
+
+  playVictory() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Triumphant fanfare
+    const seq = [
+      [392.00, 0.00, 0.18], // G4
+      [523.25, 0.18, 0.18], // C5
+      [659.25, 0.36, 0.18], // E5
+      [783.99, 0.54, 0.50], // G5 hold
+    ];
+    seq.forEach(([f, start, dur]) => {
+      [1, 2].forEach((mult, idx) => {
+        const o = this.ctx!.createOscillator();
+        const g = this.ctx!.createGain();
+        o.type = idx === 0 ? 'sawtooth' : 'triangle';
+        o.frequency.setValueAtTime(f * mult, t + start);
+        g.gain.setValueAtTime(0, t + start);
+        g.gain.linearRampToValueAtTime(idx === 0 ? 0.10 : 0.06, t + start + 0.02);
+        g.gain.linearRampToValueAtTime(0.0001, t + start + dur);
+        o.connect(g);
+        g.connect(this.dest());
+        o.start(t + start);
+        o.stop(t + start + dur + 0.05);
+      });
+    });
+  }
+
+  playDefeat() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(440, t);
+    o.frequency.exponentialRampToValueAtTime(110, t + 1.2);
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+    o.connect(g);
+    g.connect(this.dest());
+    o.start(t);
+    o.stop(t + 1.4);
+  }
+
+  playCoin() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [880, 1320].forEach((f, i) => {
+      const o = this.ctx!.createOscillator();
+      const g = this.ctx!.createGain();
+      o.type = 'square';
+      o.frequency.setValueAtTime(f, t + i * 0.06);
+      g.gain.setValueAtTime(0.08, t + i * 0.06);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.15);
+      o.connect(g);
+      g.connect(this.dest());
+      o.start(t + i * 0.06);
+      o.stop(t + i * 0.06 + 0.18);
+    });
   }
 
   startEngine() {
-    if (!this.ctx || this.engineOsc) return;
-    this.engineOsc = this.ctx.createOscillator();
-    this.engineGain = this.ctx.createGain();
-    this.engineOsc.type = 'sawtooth';
-    this.engineOsc.frequency.setValueAtTime(50, this.ctx.currentTime);
-    this.engineGain.gain.setValueAtTime(0.02, this.ctx.currentTime);
-    
+    if (!this.ctx || this.engineParts) return;
+    const t = this.ctx.currentTime;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0, t);
+    gain.gain.linearRampToValueAtTime(0.025, t + 0.3);
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(200, this.ctx.currentTime);
-    
-    this.engineOsc.connect(filter);
-    filter.connect(this.engineGain);
-    this.engineGain.connect(this.ctx.destination);
-    this.engineOsc.start();
+    filter.frequency.setValueAtTime(280, t);
+    filter.Q.value = 4;
+
+    // Three detuned saws + sub sine for richer engine timbre
+    const o1 = this.ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 50;
+    const o2 = this.ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 50.7;
+    const o3 = this.ctx.createOscillator(); o3.type = 'square';   o3.frequency.value = 25;
+    const sub = this.ctx.createOscillator(); sub.type = 'sine';   sub.frequency.value = 35;
+
+    [o1, o2, o3, sub].forEach(o => o.connect(filter));
+    filter.connect(gain);
+    gain.connect(this.dest());
+
+    // Subtle vibrato/rumble via LFO on filter freq
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 7;
+    lfoGain.gain.value = 30;
+    lfo.connect(lfoGain);
+    lfoGain.connect(filter.frequency);
+
+    [o1, o2, o3, sub, lfo].forEach(o => o.start(t));
+    this.engineParts = { oscs: [o1, o2, o3, sub], gain, filter, lfo, lfoGain };
   }
 
   updateEngine(speed: number, isAccelerating: boolean) {
-    if (!this.ctx || !this.engineOsc || !this.engineGain) return;
-    const freq = 40 + (speed * 0.2);
-    this.engineOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.1);
-    const volume = isAccelerating ? 0.05 : 0.02;
-    this.engineGain.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.1);
+    if (!this.ctx || !this.engineParts) return;
+    const t = this.ctx.currentTime;
+    const baseFreq = 45 + speed * 0.18;
+    const { oscs, gain, filter } = this.engineParts;
+    oscs[0].frequency.setTargetAtTime(baseFreq, t, 0.08);
+    oscs[1].frequency.setTargetAtTime(baseFreq * 1.014, t, 0.08);
+    oscs[2].frequency.setTargetAtTime(baseFreq * 0.5, t, 0.08);
+    oscs[3].frequency.setTargetAtTime(baseFreq * 0.7, t, 0.08);
+    filter.frequency.setTargetAtTime(220 + speed * 1.2 + (isAccelerating ? 250 : 0), t, 0.1);
+    const volume = isAccelerating ? 0.06 : 0.025;
+    gain.gain.setTargetAtTime(volume, t, 0.1);
   }
 
   stopEngine() {
-    if (this.engineOsc) {
-      this.engineOsc.stop();
-      this.engineOsc = null;
-    }
+    if (!this.engineParts) return;
+    const { oscs, gain, lfo } = this.engineParts;
+    const t = this.ctx!.currentTime;
+    gain.gain.cancelScheduledValues(t);
+    gain.gain.setValueAtTime(gain.gain.value, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.15);
+    [...oscs, lfo].forEach(o => { try { o.stop(t + 0.2); } catch {} });
+    this.engineParts = null;
   }
 }
 
@@ -265,10 +419,56 @@ export default function App() {
     const saved = localStorage.getItem('gear_race_credits');
     return saved ? parseInt(saved) : 0;
   });
+  const [totalWins, setTotalWins] = useState(() => {
+    const saved = localStorage.getItem('gear_race_total_wins');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [totalCoinsEarned, setTotalCoinsEarned] = useState(() => {
+    const saved = localStorage.getItem('gear_race_total_coins_earned');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [bountyResult, setBountyResult] = useState<{ amount: number; type: 'won' | 'lost' } | null>(null);
+  const bountyAppliedRef = useRef<string | null>(null);
+  const lastLevelRef = useRef<number>(-1);
   const [upgrades, setUpgrades] = useState<{ id: string, level: number }[]>(() => {
     const saved = localStorage.getItem('gear_race_upgrades');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Level: requires N*100 wins AND N*1000 lifetime coins earned
+  const level = Math.max(0, Math.min(Math.floor(totalWins / 100), Math.floor(totalCoinsEarned / 1000)));
+  const nextLevelWins = (level + 1) * 100;
+  const nextLevelCoins = (level + 1) * 1000;
+  const winsProgress = Math.min(1, totalWins / nextLevelWins);
+  const coinsProgress = Math.min(1, totalCoinsEarned / nextLevelCoins);
+  const levelProgress = Math.min(winsProgress, coinsProgress);
+
+  // addCredits: positive = earned (counts toward level), negative = spent (does not subtract from lifetime)
+  const addCredits = (delta: number) => {
+    setCredits(prev => Math.max(0, prev + delta));
+    if (delta > 0) setTotalCoinsEarned(prev => prev + delta);
+  };
+
+  useEffect(() => {
+    localStorage.setItem('gear_race_total_wins', totalWins.toString());
+  }, [totalWins]);
+  useEffect(() => {
+    localStorage.setItem('gear_race_total_coins_earned', totalCoinsEarned.toString());
+  }, [totalCoinsEarned]);
+
+  // Level-up notification + sound
+  useEffect(() => {
+    if (lastLevelRef.current === -1) {
+      lastLevelRef.current = level;
+      return;
+    }
+    if (level > lastLevelRef.current) {
+      sounds.playLevelUp();
+      lastLevelRef.current = level;
+    } else {
+      lastLevelRef.current = level;
+    }
+  }, [level]);
 
   const [boostTime, setBoostTime] = useState(0);
   const [lastBoostType, setLastBoostType] = useState<string | null>(null);
@@ -343,12 +543,77 @@ export default function App() {
   const claimMissionReward = (id: string) => {
     setMissions(prev => prev.map(m => {
       if (m.id === id && m.completed && !m.claimed) {
-        setCredits(c => c + m.reward);
+        addCredits(m.reward);
+        sounds.playCoin();
         return { ...m, claimed: true };
       }
       return m;
     }));
   };
+
+  // Publish wallet to Firestore so opponents can compute the 10% bounty.
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    setDoc(doc(db, 'wallets', uid), {
+      credits,
+      totalWins,
+      totalCoinsEarned,
+      lastUpdate: serverTimestamp(),
+    }, { merge: true }).catch(() => {});
+  }, [credits, totalWins, totalCoinsEarned, socketId]);
+
+  // Reset bounty marker when a new race starts
+  useEffect(() => {
+    if (gameState === 'racing') {
+      bountyAppliedRef.current = null;
+      setBountyResult(null);
+    }
+  }, [gameState]);
+
+  // 10% bounty on multiplayer race finish: winner takes 10% of each loser's wallet.
+  useEffect(() => {
+    if (gameMode !== 'multi' || gameState !== 'finished' || !multiplayerWinner || !auth.currentUser) return;
+    const myUid = auth.currentUser.uid;
+    const raceKey = `${roomId}:${multiplayerWinner.id}:${multiplayerWinner.reason}`;
+    if (bountyAppliedRef.current === raceKey) return;
+    bountyAppliedRef.current = raceKey;
+
+    const isWinner = multiplayerWinner.id === myUid;
+
+    if (isWinner) {
+      sounds.playVictory();
+      setTotalWins(w => w + 1);
+      // Read each opponent's wallet and take 10%
+      (async () => {
+        const opponentIds = Object.keys(otherPlayers).filter(id => id !== myUid);
+        let bountyTotal = 0;
+        for (const opId of opponentIds) {
+          try {
+            const snap = await getDoc(doc(db, 'wallets', opId));
+            if (snap.exists()) {
+              const data = snap.data();
+              const opCredits = typeof data.credits === 'number' ? data.credits : 0;
+              bountyTotal += Math.floor(opCredits * 0.1);
+            }
+          } catch {}
+        }
+        if (bountyTotal > 0) {
+          addCredits(bountyTotal);
+          sounds.playCoin();
+        }
+        setBountyResult({ amount: bountyTotal, type: 'won' });
+      })();
+    } else {
+      sounds.playDefeat();
+      // Loser pays 10% of own wallet
+      const loss = Math.floor(credits * 0.1);
+      if (loss > 0) {
+        setCredits(prev => Math.max(0, prev - loss));
+      }
+      setBountyResult({ amount: loss, type: 'lost' });
+    }
+  }, [gameState, multiplayerWinner, gameMode, roomId]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Matter.Engine | null>(null);
@@ -769,7 +1034,8 @@ export default function App() {
         
         // Rewards and Missions
         const reward = gameMode === 'multi' ? 300 : 100;
-        setCredits(prev => prev + reward);
+        addCredits(reward);
+        setTotalWins(w => w + 1);
         updateMissionProgress('win', 1, true);
         updateMissionProgress('temp', localEngineTemp, true);
 
@@ -1614,17 +1880,38 @@ export default function App() {
 
                   {!gameMode ? (
                     <>
-                      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl">
+                      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-5 bg-white/5 border border-white/10 px-5 py-3 rounded-2xl backdrop-blur-xl shadow-[0_0_40px_rgba(244,63,94,0.15)]">
+                        <div className="flex items-center gap-3">
+                          <div className="relative w-12 h-12 flex items-center justify-center">
+                            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 36 36">
+                              <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+                              <circle cx="18" cy="18" r="15" fill="none" stroke="url(#lvlGrad)" strokeWidth="3" strokeLinecap="round"
+                                strokeDasharray={`${levelProgress * 94.25} 94.25`} />
+                              <defs>
+                                <linearGradient id="lvlGrad" x1="0" y1="0" x2="1" y2="1">
+                                  <stop offset="0%" stopColor="#fbbf24" />
+                                  <stop offset="100%" stopColor="#f43f5e" />
+                                </linearGradient>
+                              </defs>
+                            </svg>
+                            <div className="text-base font-black italic text-white drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">{level}</div>
+                          </div>
+                          <div className="flex flex-col items-start leading-none">
+                            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Level</span>
+                            <span className="text-[10px] font-mono text-white/60">{totalWins}/{nextLevelWins} W · {totalCoinsEarned}/{nextLevelCoins} C</span>
+                          </div>
+                        </div>
+                        <div className="w-[1px] h-8 bg-white/10" />
                         <div className="flex items-center gap-3">
                           <Coins className="w-5 h-5 text-yellow-500 animate-pulse" />
                           <div className="flex flex-col items-start leading-none">
-                            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Available Credits</span>
+                            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Wallet</span>
                             <span className="text-xl font-mono font-black text-white">{credits.toLocaleString()}</span>
                           </div>
                         </div>
                         <div className="w-[1px] h-8 bg-white/10" />
                         <button 
-                          onClick={() => setGameState('shop')}
+                          onClick={() => { sounds.playClick(); setGameState('shop'); }}
                           className="flex flex-col items-center group"
                         >
                           <ShoppingCart className="w-6 h-6 text-rose-500 group-hover:scale-110 transition-transform" />
@@ -2015,7 +2302,7 @@ export default function App() {
                         : 'GLORY ACHIEVED'}
                     </h3>
                     
-                    <div className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 mb-10 backdrop-blur-md shadow-2xl">
+                    <div className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 mb-6 backdrop-blur-md shadow-2xl">
                       <p className="text-xl italic leading-tight text-white/80">
                         {gameMode === 'multi' && multiplayerWinner
                           ? (multiplayerWinner.id === auth.currentUser?.uid 
@@ -2023,6 +2310,46 @@ export default function App() {
                             : `Mission compromised. Rival has achieved completion via ${multiplayerWinner.reason}.`)
                           : `Your machine has survived the gauntlet. You are the ultimate master of mechanics.`}
                       </p>
+                    </div>
+
+                    {gameMode === 'multi' && bountyResult && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ delay: 0.3, type: 'spring' }}
+                        className={`max-w-md w-full mb-6 rounded-2xl border-2 p-5 backdrop-blur-md shadow-2xl ${
+                          bountyResult.type === 'won'
+                            ? 'bg-yellow-500/15 border-yellow-400/40 shadow-yellow-500/30'
+                            : 'bg-rose-950/40 border-rose-500/40 shadow-rose-500/30'
+                        }`}
+                      >
+                        <div className="flex items-center justify-center gap-3">
+                          <Coins className={`w-7 h-7 ${bountyResult.type === 'won' ? 'text-yellow-300 animate-pulse' : 'text-rose-300'}`} />
+                          <div className="text-left">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-white/60">
+                              {bountyResult.type === 'won' ? 'Bounty Collected (10%)' : 'Bounty Paid (10%)'}
+                            </div>
+                            <div className={`text-3xl font-mono font-black ${bountyResult.type === 'won' ? 'text-yellow-300' : 'text-rose-300'}`}>
+                              {bountyResult.type === 'won' ? '+' : '−'}{bountyResult.amount.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    <div className="max-w-md w-full mb-10 grid grid-cols-3 gap-3">
+                      <div className="bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-white/40">Level</div>
+                        <div className="text-2xl font-mono font-black text-white drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]">{level}</div>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-white/40">Wins</div>
+                        <div className="text-2xl font-mono font-black text-white">{totalWins.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-white/40">Wallet</div>
+                        <div className="text-2xl font-mono font-black text-yellow-300">{credits.toLocaleString()}</div>
+                      </div>
                     </div>
                     
                     <button 

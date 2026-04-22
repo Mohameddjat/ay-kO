@@ -48,5 +48,15 @@ service cloud.firestore {
         allow delete: if isOwner(playerId);
       }
     }
+
+    // Public wallet ledger: anyone can read (so winners can compute bounty),
+    // only the owner may write their own wallet.
+    match /wallets/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && request.resource.data.credits is number
+        && request.resource.data.totalWins is number
+        && request.resource.data.totalCoinsEarned is number;
+    }
   }
 }
