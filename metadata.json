@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Gear Race: Hill Climb Multiplayer",
-  "description": "A physics-based racing game where you build complex gear systems to power your machine across challenging terrain. Features real-time multiplayer and thermal management mechanics.",
+  "name": "GEARSHIFT: ASSEMBLY RACE",
+  "description": "A high-stakes mechanical racing game. Build and optimize gear systems, manage engine heat, and compete in real-time multiplayer races across a neon-cyberpunk straightaway.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

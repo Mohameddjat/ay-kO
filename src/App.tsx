@@ -1281,7 +1281,7 @@ export default function App() {
             >
               <div className="flex justify-between items-start mb-8">
                 <div>
-                  <h2 className="text-3xl font-black text-rose-500 mb-2">ENDLESS RUNNER MODE</h2>
+                  <h2 className="text-3xl font-black text-rose-500 mb-2 uppercase">Gearshift Protocol</h2>
                   <p className="text-white/40 font-mono text-sm uppercase">Speed & Reflexes Guide</p>
                 </div>
                 <button 
@@ -1603,6 +1603,15 @@ export default function App() {
                 className="absolute inset-0 z-40 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center pointer-events-auto p-6"
               >
                 <div className="max-w-xl w-full flex flex-col gap-8 items-center text-center">
+                  <motion.div
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="mb-4"
+                  >
+                    <h1 className="text-6xl font-black italic tracking-tighter text-rose-500 drop-shadow-[0_0_30px_rgba(244,63,94,0.3)]">GEARSHIFT</h1>
+                    <p className="text-white/40 uppercase tracking-[0.5em] text-[10px] font-black -mt-2">ASSEMBLY RACE</p>
+                  </motion.div>
+
                   {!gameMode ? (
                     <>
                       <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl">
