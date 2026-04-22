@@ -529,7 +529,7 @@ export default function App() {
     const playersRef = collection(db, 'rooms', roomId, 'players');
 
     // Listen to Room Status
-    const unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
+    const unsubscribeRoom = onSnapshot(doc(db, 'rooms', roomId), (snapshot) => {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       
@@ -538,11 +538,15 @@ export default function App() {
         setGameState('racing');
         setMultiplayerWinner(null);
       } else if (data.status === 'finished') {
-        if (gameState === 'racing' || gameState === 'exploded' || gameState === 'finished') {
-          if (data.winnerId && (!multiplayerWinner || multiplayerWinner.id !== data.winnerId)) {
-            setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
-            setGameState('finished');
-          }
+        // Stop engine for everyone if race ended
+        sounds.stopEngine();
+        
+        if (data.winnerId) {
+          setMultiplayerWinner({ id: data.winnerId, reason: data.winReason || 'Race Finished' });
+          setGameState('finished');
+        } else {
+          // Fallback if winner not recorded yet but room is finished
+          setGameState('finished');
         }
       }
     });
@@ -1933,15 +1937,16 @@ export default function App() {
             )}
 
             {/* Result Overlays */}
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               {gameState === 'exploded' && (
                 <motion.div 
+                  key="exploded-screen"
                   initial={{ opacity: 0, scale: 1.1 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 1.1 }}
-                  className="absolute inset-0 bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden"
+                  className="absolute inset-0 bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.2)_0%,transparent_70%)] animate-pulse" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.3)_0%,transparent_70%)] animate-pulse" />
                   <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
                     <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
                     <AlertTriangle className="w-12 h-12 text-white relative z-10" />
@@ -1953,10 +1958,10 @@ export default function App() {
                   <button 
                     onClick={() => {
                       if (gameMode === 'multi' && auth.currentUser) {
-                        const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
-                        updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
-                        updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                        const rRef = doc(db, 'rooms', roomId);
+                        const pRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                        updateDoc(pRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                        updateDoc(rRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
                       }
                       setIsWaiting(false);
                       setMultiplayerWinner(null);
@@ -1967,7 +1972,7 @@ export default function App() {
                       setDistance(0);
                       setCurrentSpeed(0);
                     }}
-                    className="relative z-10 bg-white text-red-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-red-50 active:scale-95 transition-all shadow-2xl shadow-black/40"
+                    className="relative z-10 bg-white text-red-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-neutral-100 active:scale-95 transition-all shadow-2xl shadow-black/40"
                   >
                     RETURN TO ASSEMBLY
                   </button>
@@ -1975,66 +1980,91 @@ export default function App() {
                 </motion.div>
               )}
 
-              {gameState === 'finished' && (() => {
-                const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
-                return (
+              {gameState === 'finished' && (
                 <motion.div 
-                  initial={{ opacity: 0, y: 50 }}
+                  key="finished-screen"
+                  initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`absolute inset-0 ${isWinner ? 'bg-green-950/95' : 'bg-red-950/95'} backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden`}
+                  exit={{ opacity: 0, y: -30 }}
+                  className={`absolute inset-0 ${(gameMode === 'multi' ? (multiplayerWinner?.id === auth.currentUser?.uid) : true) ? 'bg-emerald-950/90' : 'bg-rose-950/90'} backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden`}
                 >
-                  <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,${isWinner ? 'rgba(34,197,94,0.2)' : 'rgba(220,38,38,0.2)'}_0%,transparent_70%)] animate-pulse`} />
-                  {isWinner ? (
-                    <Trophy className="w-24 h-24 text-yellow-500 mb-8 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)] animate-bounce" />
-                  ) : (
-                    <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
-                      <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
-                      <AlertTriangle className="w-12 h-12 text-white relative z-10" />
-                    </div>
-                  )}
-                  
-                  {gameMode === 'multi' && multiplayerWinner ? (
-                    <>
-                      <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">
-                        {isWinner ? 'VICTORY SECURED' : 'DEFEAT ACKNOWLEDGED'}
-                      </h3>
-                      <p className={`mb-10 max-w-lg text-lg italic leading-tight ${isWinner ? 'text-green-200/60' : 'text-red-200/60'}`}>
-                        {isWinner 
-                          ? `Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
-                          : `Rival has achieved completion via ${multiplayerWinner.reason}. Retrying synchronization recommended.`}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white">GLORY ACHIEVED</h3>
-                      <p className="text-green-200/60 mb-10 max-w-sm text-lg italic leading-tight">Your machine has survived the gauntlet. You are the ultimate master of mechanics.</p>
-                    </>
-                  )}
-                  
-                  <button 
-                    onClick={() => {
-                      if (gameMode === 'multi' && auth.currentUser) {
-                        const roomRef = doc(db, 'rooms', roomId);
-                        const playerRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
-                        updateDoc(playerRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
-                        updateDoc(roomRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
-                      }
-                      setIsWaiting(false);
-                      setMultiplayerWinner(null);
-                      setGameState('setup');
-                      setGameMode(null);
-                      setMultiRoomConfirmed(false);
-                      setDistance(0);
-                      setCurrentSpeed(0);
-                    }}
-                    className={`relative z-10 bg-white ${isWinner ? 'text-green-950 hover:bg-green-50' : 'text-red-950 hover:bg-red-50'} px-12 py-4 rounded-2xl font-black text-xl active:scale-95 transition-all shadow-2xl shadow-black/40`}
-                  >
-                    CONTINUE MISSION
-                  </button>
+                  {(() => {
+                    const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
+                    return (
+                      <>
+                        <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,${isWinner ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}_0%,transparent_70%)] animate-pulse`} />
+                        {isWinner ? (
+                          <div className="relative mb-8">
+                            <motion.div 
+                              animate={{ rotate: [0, 10, -10, 0] }}
+                              transition={{ repeat: Infinity, duration: 2 }}
+                            >
+                              <Trophy className="w-24 h-24 text-yellow-500 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)]" />
+                            </motion.div>
+                            <motion.div 
+                              animate={{ scale: [1, 1.2, 1] }}
+                              transition={{ repeat: Infinity, duration: 1 }}
+                              className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[10px] font-black px-2 py-0.5 rounded italic"
+                            >
+                              CHAMPION
+                            </motion.div>
+                          </div>
+                        ) : (
+                          <div className="w-24 h-24 bg-rose-600 rounded-full flex items-center justify-center mb-8 relative">
+                            <div className="absolute inset-0 bg-rose-600 rounded-full animate-ping opacity-20" />
+                            <AlertTriangle className="w-12 h-12 text-white relative z-10" />
+                          </div>
+                        )}
+                        
+                        <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white drop-shadow-lg">
+                          {gameMode === 'multi' 
+                            ? (isWinner ? 'VICTORY SECURED' : 'SECTOR LOST') 
+                            : 'GLORY ACHIEVED'}
+                        </h3>
+                        
+                        <div className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 mb-10 backdrop-blur-md relative z-10">
+                          <p className={`text-lg italic leading-tight ${isWinner ? 'text-emerald-200' : 'text-rose-200/80'}`}>
+                            {gameMode === 'multi' && multiplayerWinner
+                              ? (isWinner 
+                                ? `Excellent performance. Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
+                                : `Mission compromised. Rival has achieved completion via ${multiplayerWinner.reason}.`)
+                              : `Your machine has survived the gauntlet. You are the ultimate master of mechanics.`}
+                          </p>
+                        </div>
+                        
+                        <div className="flex gap-4 relative z-10">
+                          <button 
+                            onClick={() => {
+                              if (gameMode === 'multi' && auth.currentUser) {
+                                const rRef = doc(db, 'rooms', roomId);
+                                const pRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                                updateDoc(pRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                                updateDoc(rRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                              }
+                              setIsWaiting(false);
+                              setMultiplayerWinner(null);
+                              setGameState('setup');
+                              setGameMode(null);
+                              setMultiRoomConfirmed(false);
+                              setDistance(0);
+                              setCurrentSpeed(0);
+                              setEngineTemp(20);
+                            }}
+                            className={`px-12 py-4 rounded-2xl font-black text-xl active:scale-95 transition-all shadow-2xl shadow-black/40 border-b-4 ${
+                              isWinner 
+                                ? 'bg-emerald-500 text-white hover:bg-emerald-400 border-emerald-700 shadow-emerald-500/20' 
+                                : 'bg-white text-rose-950 hover:bg-neutral-100 border-neutral-300'
+                            }`}
+                          >
+                            CONTINUE MISSION
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                   <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
                 </motion.div>
-                );
-              })}
+              )}
             </AnimatePresence>
           </div>
         </div>
