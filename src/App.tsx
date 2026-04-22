@@ -39,10 +39,10 @@ import {
 } from 'lucide-react';
 import { Gear, PlayerState, GameRoom } from './types';
 
-const GRID_COLS = 12;
-const GRID_ROWS = 3;
-const CELL_SIZE = 40;
-const GEAR_TYPES = [8, 16, 24, 32, 48, 64, 80, 96, 128, 160, 192, 256];
+const GRID_COLS = 6;
+const GRID_ROWS = 2;
+const CELL_SIZE = 60;
+const GEAR_TYPES = [16, 24, 32, 48, 64, 80, 96, 128];
 const TRACK_LENGTH = 100000;
 
 // Audio System
@@ -206,20 +206,18 @@ export default function App() {
   const [otherPlayers, setOtherPlayers] = useState<Record<string, PlayerState>>({});
   const [gears, setGears] = useState<Gear[]>(() => {
     const saved = localStorage.getItem('gear_race_gears');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Filter out gears that don't fit in 6x2
+      return parsed.filter((g: any) => g.x < 6 && g.y < 2);
+    }
     return [
-      { id: '0-1', x: 0, y: 1, teeth: 16, type: 'intermediate' },
-      { id: '1-1', x: 1, y: 1, teeth: 16, type: 'intermediate' },
-      { id: '2-1', x: 2, y: 1, teeth: 32, type: 'intermediate' },
-      { id: '3-1', x: 3, y: 1, teeth: 32, type: 'intermediate' },
-      { id: '4-1', x: 4, y: 1, teeth: 48, type: 'intermediate' },
-      { id: '5-1', x: 5, y: 1, teeth: 48, type: 'intermediate' },
-      { id: '6-1', x: 6, y: 1, teeth: 64, type: 'intermediate' },
-      { id: '7-1', x: 7, y: 1, teeth: 64, type: 'intermediate' },
-      { id: '8-1', x: 8, y: 1, teeth: 80, type: 'intermediate' },
-      { id: '9-1', x: 9, y: 1, teeth: 96, type: 'intermediate' },
-      { id: '10-1', x: 10, y: 1, teeth: 128, type: 'intermediate' },
-      { id: '11-1', x: 11, y: 1, teeth: 128, type: 'intermediate' },
+      { id: '0-0', x: 0, y: 0, teeth: 16, type: 'intermediate' },
+      { id: '1-0', x: 1, y: 0, teeth: 32, type: 'intermediate' },
+      { id: '2-0', x: 2, y: 0, teeth: 48, type: 'intermediate' },
+      { id: '3-1', x: 3, y: 1, teeth: 64, type: 'intermediate' },
+      { id: '4-1', x: 4, y: 1, teeth: 80, type: 'intermediate' },
+      { id: '5-1', x: 5, y: 1, teeth: 128, type: 'intermediate' },
     ];
   });
 
@@ -1941,18 +1939,17 @@ export default function App() {
               {gameState === 'exploded' && (
                 <motion.div 
                   key="exploded-screen"
-                  initial={{ opacity: 0, scale: 1.1 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.1 }}
-                  className="absolute inset-0 bg-red-950/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-rose-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center z-[150] overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.3)_0%,transparent_70%)] animate-pulse" />
-                  <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center mb-8 relative">
-                    <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20" />
-                    <AlertTriangle className="w-12 h-12 text-white relative z-10" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(244,63,94,0.4)_0%,transparent_70%)] animate-pulse" />
+                  <div className="w-24 h-24 bg-rose-600 rounded-full flex items-center justify-center mb-8 relative border-4 border-white/20">
+                    <AlertTriangle className="w-12 h-12 text-white" />
                   </div>
-                  <h3 className="text-5xl font-black mb-4 italic tracking-tighter text-white drop-shadow-2xl uppercase">Critical Failure</h3>
-                  <p className="text-red-200/60 mb-10 max-w-sm text-lg italic leading-tight">
+                  <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white uppercase drop-shadow-lg">Critical Failure</h3>
+                  <p className="text-white/60 mb-10 max-w-sm text-lg italic leading-tight">
                     {gameMode === 'multi' ? 'MISSION FAILED: Unit compromised. Rival has secured the sector.' : 'The mechanical pressure was too extreme. The engine has detonated.'}
                   </p>
                   <button 
@@ -1972,7 +1969,7 @@ export default function App() {
                       setDistance(0);
                       setCurrentSpeed(0);
                     }}
-                    className="relative z-10 bg-white text-red-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-neutral-100 active:scale-95 transition-all shadow-2xl shadow-black/40"
+                    className="relative z-10 bg-white text-rose-950 px-12 py-4 rounded-2xl font-black text-xl hover:bg-neutral-100 active:scale-95 transition-all shadow-2xl"
                   >
                     RETURN TO ASSEMBLY
                   </button>
@@ -1983,85 +1980,68 @@ export default function App() {
               {gameState === 'finished' && (
                 <motion.div 
                   key="finished-screen"
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -30 }}
-                  className={`absolute inset-0 ${(gameMode === 'multi' ? (multiplayerWinner?.id === auth.currentUser?.uid) : true) ? 'bg-emerald-950/90' : 'bg-rose-950/90'} backdrop-blur-md flex flex-col items-center justify-center p-8 text-center z-50 overflow-hidden`}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.1 }}
+                  className={`absolute inset-0 ${(gameMode === 'multi' ? (multiplayerWinner?.id === auth.currentUser?.uid) : true) ? 'bg-emerald-900/95' : 'bg-rose-900/95'} backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center z-[150] overflow-hidden`}
                 >
-                  {(() => {
-                    const isWinner = gameMode === 'single' || (gameMode === 'multi' && multiplayerWinner?.id === auth.currentUser?.uid);
-                    return (
-                      <>
-                        <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,${isWinner ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}_0%,transparent_70%)] animate-pulse`} />
-                        {isWinner ? (
-                          <div className="relative mb-8">
-                            <motion.div 
-                              animate={{ rotate: [0, 10, -10, 0] }}
-                              transition={{ repeat: Infinity, duration: 2 }}
-                            >
-                              <Trophy className="w-24 h-24 text-yellow-500 drop-shadow-[0_0_30px_rgba(234,179,8,0.5)]" />
-                            </motion.div>
-                            <motion.div 
-                              animate={{ scale: [1, 1.2, 1] }}
-                              transition={{ repeat: Infinity, duration: 1 }}
-                              className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[10px] font-black px-2 py-0.5 rounded italic"
-                            >
-                              CHAMPION
-                            </motion.div>
-                          </div>
-                        ) : (
-                          <div className="w-24 h-24 bg-rose-600 rounded-full flex items-center justify-center mb-8 relative">
-                            <div className="absolute inset-0 bg-rose-600 rounded-full animate-ping opacity-20" />
-                            <AlertTriangle className="w-12 h-12 text-white relative z-10" />
-                          </div>
-                        )}
-                        
-                        <h3 className="text-6xl font-black mb-4 italic tracking-tighter text-white drop-shadow-lg">
-                          {gameMode === 'multi' 
-                            ? (isWinner ? 'VICTORY SECURED' : 'SECTOR LOST') 
-                            : 'GLORY ACHIEVED'}
-                        </h3>
-                        
-                        <div className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 mb-10 backdrop-blur-md relative z-10">
-                          <p className={`text-lg italic leading-tight ${isWinner ? 'text-emerald-200' : 'text-rose-200/80'}`}>
-                            {gameMode === 'multi' && multiplayerWinner
-                              ? (isWinner 
-                                ? `Excellent performance. Protocol success: Rival neutralized via ${multiplayerWinner.reason}.` 
-                                : `Mission compromised. Rival has achieved completion via ${multiplayerWinner.reason}.`)
-                              : `Your machine has survived the gauntlet. You are the ultimate master of mechanics.`}
-                          </p>
-                        </div>
-                        
-                        <div className="flex gap-4 relative z-10">
-                          <button 
-                            onClick={() => {
-                              if (gameMode === 'multi' && auth.currentUser) {
-                                const rRef = doc(db, 'rooms', roomId);
-                                const pRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
-                                updateDoc(pRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
-                                updateDoc(rRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
-                              }
-                              setIsWaiting(false);
-                              setMultiplayerWinner(null);
-                              setGameState('setup');
-                              setGameMode(null);
-                              setMultiRoomConfirmed(false);
-                              setDistance(0);
-                              setCurrentSpeed(0);
-                              setEngineTemp(20);
-                            }}
-                            className={`px-12 py-4 rounded-2xl font-black text-xl active:scale-95 transition-all shadow-2xl shadow-black/40 border-b-4 ${
-                              isWinner 
-                                ? 'bg-emerald-500 text-white hover:bg-emerald-400 border-emerald-700 shadow-emerald-500/20' 
-                                : 'bg-white text-rose-950 hover:bg-neutral-100 border-neutral-300'
-                            }`}
-                          >
-                            CONTINUE MISSION
-                          </button>
-                        </div>
-                      </>
-                    );
-                  })()}
+                  <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,${(gameMode === 'multi' ? (multiplayerWinner?.id === auth.currentUser?.uid) : true) ? 'rgba(16,185,129,0.4)' : 'rgba(244,63,94,0.4)'}_0%,transparent_70%)] animate-pulse`} />
+                  
+                  {/* Content Container to ensure layering */}
+                  <div className="relative z-10 flex flex-col items-center">
+                    {(gameMode === 'single' || (multiplayerWinner?.id === auth.currentUser?.uid)) ? (
+                      <div className="relative mb-8 pt-6">
+                        <Trophy className="w-32 h-32 text-yellow-500 drop-shadow-[0_0_50px_rgba(234,179,8,0.6)] animate-bounce" />
+                        <div className="absolute top-0 right-0 bg-yellow-500 text-black text-[10px] font-black px-3 py-1 rounded-full italic shadow-lg">CHAMPION</div>
+                      </div>
+                    ) : (
+                      <div className="w-24 h-24 bg-rose-600 rounded-full flex items-center justify-center mb-8 border-4 border-white/20">
+                        <AlertTriangle className="w-12 h-12 text-white" />
+                      </div>
+                    )}
+                    
+                    <h3 className="text-7xl font-black mb-4 italic tracking-tighter text-white drop-shadow-2xl">
+                      {gameMode === 'multi' 
+                        ? (multiplayerWinner?.id === auth.currentUser?.uid ? 'VICTORY SECURED' : 'SECTOR LOST') 
+                        : 'GLORY ACHIEVED'}
+                    </h3>
+                    
+                    <div className="max-w-md w-full bg-white/5 border border-white/10 rounded-2xl p-6 mb-10 backdrop-blur-md shadow-2xl">
+                      <p className="text-xl italic leading-tight text-white/80">
+                        {gameMode === 'multi' && multiplayerWinner
+                          ? (multiplayerWinner.id === auth.currentUser?.uid 
+                            ? `Protocol success: Rival neutralized via ${multiplayerWinner.reason}. Credits awarded.` 
+                            : `Mission compromised. Rival has achieved completion via ${multiplayerWinner.reason}.`)
+                          : `Your machine has survived the gauntlet. You are the ultimate master of mechanics.`}
+                      </p>
+                    </div>
+                    
+                    <button 
+                      onClick={() => {
+                        if (gameMode === 'multi' && auth.currentUser) {
+                          const rRef = doc(db, 'rooms', roomId);
+                          const pRef = doc(db, 'rooms', roomId, 'players', auth.currentUser.uid);
+                          updateDoc(pRef, { isReady: false, progress: 0, x: 0, y: 0, isExploded: false }).catch(console.error);
+                          updateDoc(rRef, { status: 'waiting', winnerId: null, winReason: null }).catch(console.error);
+                        }
+                        setIsWaiting(false);
+                        setMultiplayerWinner(null);
+                        setGameState('setup');
+                        setGameMode(null);
+                        setMultiRoomConfirmed(false);
+                        setDistance(0);
+                        setCurrentSpeed(0);
+                        setEngineTemp(20);
+                      }}
+                      className={`px-16 py-5 rounded-2xl font-black text-2xl active:scale-95 transition-all shadow-2xl border-b-8 ${
+                        (gameMode === 'single' || (multiplayerWinner?.id === auth.currentUser?.uid))
+                          ? 'bg-emerald-500 text-white hover:bg-emerald-400 border-emerald-700 shadow-emerald-500/30' 
+                          : 'bg-white text-rose-950 hover:bg-neutral-100 border-neutral-300'
+                      }`}
+                    >
+                      CONTINUE MISSION
+                    </button>
+                  </div>
                   <div className="absolute inset-0 pointer-events-none scanline opacity-[0.05]" />
                 </motion.div>
               )}
