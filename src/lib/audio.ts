@@ -54,15 +54,46 @@ class AudioBus {
   private sfxMuted = false;
   private musicMuted = false;
   private fadeRaf: number | null = null;
+  private unlocked = false;
+  private pendingTrack: { track: TrackName; loop: boolean; fadeMs: number } | null = null;
 
   init() {
-    if (this.ctx) return;
+    if (this.ctx) {
+      this.installUnlockHandler();
+      return;
+    }
     this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     this.sfxGain = this.ctx.createGain();
     this.sfxGain.gain.value = 0.8;
     this.sfxGain.connect(this.ctx.destination);
     // Preload SFX in background
     (Object.keys(SFX_MAP) as SfxName[]).forEach(name => this.loadSfx(name));
+    this.installUnlockHandler();
+  }
+
+  private installUnlockHandler() {
+    if (this.unlocked) return;
+    const unlock = () => {
+      if (this.unlocked) return;
+      this.unlocked = true;
+      try { this.ctx?.resume(); } catch {}
+      // Retry the music element if it failed to autoplay
+      if (this.musicEl && this.musicEl.paused) {
+        this.musicEl.play().catch(() => {});
+      } else if (this.pendingTrack) {
+        const p = this.pendingTrack;
+        this.pendingTrack = null;
+        this.playMusic(p.track, { loop: p.loop, fadeMs: p.fadeMs });
+      }
+      window.removeEventListener('pointerdown', unlock, true);
+      window.removeEventListener('keydown', unlock, true);
+      window.removeEventListener('touchstart', unlock, true);
+      window.removeEventListener('click', unlock, true);
+    };
+    window.addEventListener('pointerdown', unlock, true);
+    window.addEventListener('keydown', unlock, true);
+    window.addEventListener('touchstart', unlock, true);
+    window.addEventListener('click', unlock, true);
   }
 
   private async loadSfx(name: SfxName) {
@@ -101,7 +132,16 @@ class AudioBus {
     const next = new Audio(MUSIC_MAP[track]);
     next.loop = loop;
     next.volume = 0;
-    next.play().catch(() => {});
+    const playPromise = next.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {
+        // Autoplay was blocked — remember intent and let the unlock handler retry.
+        if (!this.unlocked) {
+          this.pendingTrack = { track, loop, fadeMs };
+          this.installUnlockHandler();
+        }
+      });
+    }
     const prev = this.musicEl;
     this.musicEl = next;
     const target = this.musicMuted ? 0 : this.musicVolume;
