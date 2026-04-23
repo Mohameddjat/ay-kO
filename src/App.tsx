@@ -49,6 +49,17 @@ const CELL_SIZE = 60;
 const DEFAULT_GEARBOX: number[] = [0.55, 0.85, 1.20, 1.65];
 const GEARBOX_OPTIONS = [0.4, 0.55, 0.7, 0.85, 1.0, 1.2, 1.4, 1.65, 1.9, 2.2];
 
+// Mechanical tuning — each slider goes 1..5 (3 = stock).
+// The interpretation is in `applyTuning` further below.
+type Tuning = {
+  tires: number;    // grip: lane responsiveness + near-miss window
+  brakes: number;   // braking power + brake heat
+  cooling: number;  // engine cooling rate
+  turbo: number;    // boost duration & top-end power
+  chassis: number;  // weight: lower = better accel, higher = slope resilience
+};
+const DEFAULT_TUNING: Tuning = { tires: 3, brakes: 3, cooling: 3, turbo: 3, chassis: 3 };
+
 // Procedural slope along the track (returns radians, ~ -0.18 to +0.18).
 const slopeAt = (z: number) => {
   return Math.sin(z * 0.0011) * 0.11 + Math.sin(z * 0.00037) * 0.07;
@@ -420,6 +431,23 @@ export default function App() {
   useEffect(() => { currentGearRef.current = currentGear; }, [currentGear]);
   const gearboxRatiosRef = useRef(gearboxRatios);
   useEffect(() => { gearboxRatiosRef.current = gearboxRatios; }, [gearboxRatios]);
+
+  // Mechanical tuning (tires/brakes/cooling/turbo/chassis).
+  const [tuning, setTuning] = useState<Tuning>(() => {
+    try {
+      const raw = localStorage.getItem('gear_race_tuning');
+      if (raw) {
+        const t = JSON.parse(raw);
+        return { ...DEFAULT_TUNING, ...t };
+      }
+    } catch {}
+    return { ...DEFAULT_TUNING };
+  });
+  useEffect(() => {
+    localStorage.setItem('gear_race_tuning', JSON.stringify(tuning));
+  }, [tuning]);
+  const tuningRef = useRef(tuning);
+  useEffect(() => { tuningRef.current = tuning; }, [tuning]);
   const [currentSlope, setCurrentSlope] = useState(0); // radians, for HUD
 
   // Reset transmission to 2nd gear at the start of every race
@@ -1045,14 +1073,19 @@ export default function App() {
 
       sounds.updateEngine(localSpeed, activeAcceleration);
       
-      // Realistic Speed and Torque calculation (with 4-speed gearbox)
+      // Realistic Speed and Torque calculation (with 4-speed gearbox + tuning)
+      const tn = tuningRef.current;
+      // Tuning multipliers — each level moves ~10-15% off stock (level 3).
+      const turboTopMult = 1 + (tn.turbo - 3) * 0.07;       // top speed
+      const chassisAccelMult = 1 + (3 - tn.chassis) * 0.08; // lighter = more accel
+      const chassisSlopeMult = 1 + (tn.chassis - 3) * 0.10; // heavier = less hurt by slope
       const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
       const gboxMult = gearboxRatiosRef.current[currentGearRef.current - 1] ?? 1;
       const effectiveRatio = Math.max(0.05, gearRatio * gboxMult);
-      let topSpeed = 200 + (effectiveRatio * 300 * efficiency);
+      let topSpeed = (200 + (effectiveRatio * 300 * efficiency)) * turboTopMult;
       let baseTorque = 150 * efficiency * (hasUpgrade('nitro_system') ? 1.25 : 1);
       const currentTorque = effectiveRatio > 0 ? baseTorque / Math.max(0.3, Math.pow(effectiveRatio, 0.7)) : 0;
-      let acceleration = currentTorque;
+      let acceleration = currentTorque * chassisAccelMult;
 
       // Slope (hills): positive = uphill, negative = downhill
       const slope = slopeAt(localDistance);
@@ -1068,18 +1101,19 @@ export default function App() {
       const drag = 0.5; // Air resistance
       const friction = 20; // Ground friction
 
+      // Brake power scales with brake tuning (level 1 = 70%, level 5 = 130%).
+      const brakePower = 600 * (1 + (tn.brakes - 3) * 0.15);
       if (activeAcceleration) {
         localSpeed = Math.min(topSpeed, localSpeed + acceleration * dt);
       } else if (brake) {
-        localSpeed = Math.max(0, localSpeed - 600 * dt);
+        localSpeed = Math.max(0, localSpeed - brakePower * dt);
       } else {
         // Natural deceleration
         localSpeed = Math.max(0, localSpeed - (friction + localSpeed * drag * 0.01) * dt);
       }
 
-      // Slope physics: gravity pulls back uphill / accelerates downhill.
-      // Capped so steep hills feel meaningful but not insurmountable.
-      const gravityPull = slope * 700; // px/s² scale
+      // Slope physics: heavier chassis fights gravity better (smaller pull).
+      const gravityPull = (slope * 700) / chassisSlopeMult;
       localSpeed = Math.max(0, Math.min(topSpeed * 1.25, localSpeed - gravityPull * dt));
 
       localDistance += localSpeed * dt;
@@ -1092,30 +1126,35 @@ export default function App() {
       updateMissionProgress('speed', localSpeed / 10);
       updateMissionProgress('distance', localSpeed * dt);
 
-      // Lane interpolation
+      // Lane interpolation — better tires = sharper steering response.
+      const tireResponse = 10 * (1 + (tn.tires - 3) * 0.15);
       const diff = targetLaneRef.current - localPlayerLane;
       if (Math.abs(diff) < 0.01) localPlayerLane = targetLaneRef.current;
-      else localPlayerLane += diff * 10 * dt;
+      else localPlayerLane += diff * tireResponse * dt;
       setPlayerLane(localPlayerLane);
 
       // Heat management — uphill stresses the engine, downhill braking cooks brakes.
       // Wrong gear (too low for current speed) over-revs and adds heat too.
       const overRev = Math.max(0, (localSpeed / Math.max(50, topSpeed)) - 0.95) * 8;
+      // Cooling tuning: level 1 = +50% heat, level 5 = -40% heat. Stacks with super_cooler.
+      const coolMult = (1 - (tn.cooling - 3) * 0.18) * (hasUpgrade('super_cooler') ? 0.6 : 1);
+      const coolDecay = 5 * (1 + (tn.cooling - 3) * 0.25); // off-throttle cool-down
       if (activeAcceleration) {
         const slopeHeat = Math.max(0, slope) * 18; // uphill burst
-        const heatGen = (effectiveRatio * 0.5 + localSpeed * 0.01 + slopeHeat + overRev) * (hasUpgrade('super_cooler') ? 0.6 : 1);
+        const heatGen = (effectiveRatio * 0.5 + localSpeed * 0.01 + slopeHeat + overRev) * coolMult;
         localEngineTemp = Math.min(100, localEngineTemp + heatGen * dt);
       } else {
         // Engine still warms a bit going uphill even off-throttle
         const idleHeat = Math.max(0, slope) * 4 + overRev * 0.4;
-        localEngineTemp = Math.max(20, localEngineTemp + (idleHeat - 5) * dt);
+        localEngineTemp = Math.max(20, localEngineTemp + (idleHeat - coolDecay) * dt);
       }
       setEngineTemp(localEngineTemp);
 
+      // Brake heat: better brakes shed less heat per unit work but apply harder.
+      const brakeHeatMult = 1 - (tn.brakes - 3) * 0.10;
       if (brake) {
-        // Downhill braking generates much more heat (gravity helping)
         const downhillBoost = Math.max(0, -slope) * 60;
-        setBrakeTemp(prev => Math.min(100, prev + (20 + downhillBoost) * dt));
+        setBrakeTemp(prev => Math.min(100, prev + (20 + downhillBoost) * brakeHeatMult * dt));
       } else {
         setBrakeTemp(prev => Math.max(20, prev - 10 * dt));
       }
@@ -1168,8 +1207,10 @@ export default function App() {
         
         // Collision detection
         if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLaneRef.current) < 0.5) {
-          localEngineTemp += 15;
-          localSpeed *= 0.4; // Significant speed penalty
+          // Better tires soften the crash (less heat, less speed lost).
+          const grip = 1 + (tn.tires - 3) * 0.15;
+          localEngineTemp += 15 / grip;
+          localSpeed *= Math.min(0.7, 0.4 * grip); // less speed lost with better tires
           screenShake = 20; // Trigger screen shake
           localBoostTimer = 0; // Cancel boost on hit
           sounds.playCrash();
@@ -1193,6 +1234,9 @@ export default function App() {
             else if (lateralDist < 1.3) { boost = 2; msg = "NEAR MISS! 2s"; }
             
             if (boost > 0) {
+              // Turbo tuning extends boost duration (level 1 = 80%, level 5 = 130%).
+              const turboDur = 1 + (tn.turbo - 3) * 0.12;
+              boost *= turboDur;
               localBoostTimer = Math.max(localBoostTimer, boost); // Calculate the latest best boost, don't stack
               setBoostTime(localBoostTimer);
               setLastBoostType('NEAR MISS');
@@ -2829,6 +2873,55 @@ export default function App() {
                            <button onClick={() => {const n=prompt('Preset name:'); if(n) setPresets([...presets, {name:n, gears:[...gears]}])}} className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase">Save</button>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Mechanical Tuning */}
+                  <div className="mt-8 bg-gradient-to-br from-emerald-500/5 to-blue-500/5 border border-emerald-500/20 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-black italic uppercase tracking-tighter text-emerald-400">Mechanical Tuning</h3>
+                        <p className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">Dial in the chassis · 5 systems · stock = 3</p>
+                      </div>
+                      <button
+                        onClick={() => { setTuning({ ...DEFAULT_TUNING }); audioBus.playSfx('click'); }}
+                        className="px-3 py-1.5 text-[10px] font-black uppercase rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white/60"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {([
+                        { key: 'tires',   label: 'Tires (Grip)',     desc: 'Sharper steering · softer crashes',  tone: 'text-emerald-400', bar: 'bg-emerald-400', icon: '🛞' },
+                        { key: 'brakes',  label: 'Brakes',           desc: 'Stronger stopping · less heat',       tone: 'text-rose-400',    bar: 'bg-rose-400',    icon: '🛑' },
+                        { key: 'cooling', label: 'Cooling',          desc: 'Slower engine heat buildup',          tone: 'text-blue-400',    bar: 'bg-blue-400',    icon: '❄️' },
+                        { key: 'turbo',   label: 'Turbo',            desc: 'Higher top speed · longer boosts',    tone: 'text-amber-400',   bar: 'bg-amber-400',   icon: '💨' },
+                        { key: 'chassis', label: 'Chassis (Weight)', desc: 'Light: faster accel · Heavy: hills',  tone: 'text-purple-400',  bar: 'bg-purple-400',  icon: '⚙️' },
+                      ] as const).map(({ key, label, desc, tone, bar, icon }) => {
+                        const val = tuning[key];
+                        const dec = () => { setTuning({ ...tuning, [key]: Math.max(1, val - 1) }); audioBus.playSfx('click'); };
+                        const inc = () => { setTuning({ ...tuning, [key]: Math.min(5, val + 1) }); audioBus.playSfx('click'); };
+                        return (
+                          <div key={key} className="bg-black/40 border border-white/10 rounded-xl p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <p className={`text-[11px] font-black uppercase tracking-widest ${tone}`}>{icon} {label}</p>
+                                <p className="text-[9px] text-white/30 italic">{desc}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button onClick={dec} className="w-7 h-7 rounded-md bg-white/5 hover:bg-white/15 text-white/70 font-black text-sm border border-white/10">−</button>
+                                <span className={`font-mono font-black text-sm w-6 text-center ${tone}`}>{val}</span>
+                                <button onClick={inc} className="w-7 h-7 rounded-md bg-white/5 hover:bg-white/15 text-white/70 font-black text-sm border border-white/10">+</button>
+                              </div>
+                            </div>
+                            <div className="flex gap-1">
+                              {[1,2,3,4,5].map(n => (
+                                <div key={n} className={`flex-1 h-1.5 rounded ${n <= val ? bar : 'bg-white/10'}`} />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
