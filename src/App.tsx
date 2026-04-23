@@ -745,6 +745,12 @@ export default function App() {
           setCurrentGear(g => Math.min(4, g + 1));
           audioBus.playSfx('click');
         }
+        // Direct gear selection with number keys 1..4
+        if (key === '1' || key === '2' || key === '3' || key === '4') {
+          const g = parseInt(key, 10);
+          setCurrentGear(g);
+          audioBus.playSfx('click');
+        }
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -1207,17 +1213,32 @@ export default function App() {
       canvas.width = w;
       canvas.height = h;
 
-      // Horizon shifts up/down with slope to fake the feeling of a hill.
-      // Look ahead a bit so the visual change leads the physics.
+      // Horizon shifts a little with slope (camera pitch feel).
       const visualSlope = slopeAt(localDistance + 600);
       const baseHorizon = h * 0.45;
-      const horizon = Math.max(h * 0.15, Math.min(h * 0.7, baseHorizon + visualSlope * h * 0.45));
+      const horizon = Math.max(h * 0.25, Math.min(h * 0.62, baseHorizon + visualSlope * h * 0.18));
       const LANE_WIDTH_BOTTOM = w < 640 ? w * 0.6 : w * 0.4; // Wider road on mobile
       const LANE_WIDTH_HORIZON = w * 0.02; // 2% of canvas at horizon
 
       const getX = (lane: number, s: number) => {
         const spread = LANE_WIDTH_HORIZON + (LANE_WIDTH_BOTTOM - LANE_WIDTH_HORIZON) * s;
         return w/2 + (lane * spread);
+      };
+
+      // yAt(s): vertical position for perspective fraction s in [0..1].
+      // Adds a vertical "bend" for hills so the road visually climbs/dips.
+      // s = perspective scale (0 = horizon, 1 = foreground / camera).
+      const yAt = (s: number) => {
+        const baseY = horizon + (h - horizon) * s;
+        // Approximate inverse perspective: scale = 800/(z+800) → z = 800*(1-s)/s
+        const sClamp = Math.max(0.04, s);
+        const zRel = (1 - sClamp) * 800 / sClamp;
+        const slopeAhead = slopeAt(localDistance + zRel);
+        // Negative slope (downhill) should pull road DOWN visually; positive UP.
+        // Magnitude tapers near foreground so the camera stays anchored to the car.
+        const taper = Math.pow(1 - s, 0.55);
+        const bend = -slopeAhead * (h - horizon) * 0.85 * taper;
+        return baseY + bend;
       };
 
       ctx.save();
@@ -1275,13 +1296,41 @@ export default function App() {
       ctx.fillStyle = '#064e3b';
       ctx.fillRect(0, horizon, w, h - horizon);
 
-      // Draw Road
+      // Draw Road as N vertical strips, each bent by slope ahead → road climbs/dips visually.
+      const ROAD_STRIPS = 36;
       ctx.fillStyle = '#1a1a1a';
+      for (let i = 0; i < ROAD_STRIPS; i++) {
+        const s1 = i / ROAD_STRIPS;
+        const s2 = (i + 1) / ROAD_STRIPS;
+        const y1 = yAt(s1);
+        const y2 = yAt(s2);
+        ctx.beginPath();
+        ctx.moveTo(getX(-1.8, s1), y1);
+        ctx.lineTo(getX(1.8, s1), y1);
+        ctx.lineTo(getX(1.8, s2), y2);
+        ctx.lineTo(getX(-1.8, s2), y2);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Subtle grass overlay along the bent edges (covers any slim seam where ground differs)
+      ctx.fillStyle = '#064e3b';
       ctx.beginPath();
-      ctx.moveTo(getX(-1.8, 0), horizon);
-      ctx.lineTo(getX(1.8, 0), horizon);
-      ctx.lineTo(getX(1.8, 1), h);
-      ctx.lineTo(getX(-1.8, 1), h);
+      ctx.moveTo(0, h);
+      for (let i = 0; i <= ROAD_STRIPS; i++) {
+        const s = i / ROAD_STRIPS;
+        ctx.lineTo(getX(-1.8, s), yAt(s));
+      }
+      ctx.lineTo(0, yAt(0));
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(w, h);
+      for (let i = 0; i <= ROAD_STRIPS; i++) {
+        const s = i / ROAD_STRIPS;
+        ctx.lineTo(getX(1.8, s), yAt(s));
+      }
+      ctx.lineTo(w, yAt(0));
+      ctx.closePath();
       ctx.fill();
 
       // Rumble Strips (Side of road)
@@ -1293,36 +1342,45 @@ export default function App() {
         
         ctx.fillStyle = Math.floor(zPos) % 2 === 0 ? '#fff' : '#e11d48';
         
+        const ry1 = yAt(s1);
+        const ry2 = yAt(s2);
+
         // Left Strip
         ctx.beginPath();
-        ctx.moveTo(getX(-1.8, s1), horizon + (h - horizon) * s1);
-        ctx.lineTo(getX(-1.6, s1), horizon + (h - horizon) * s1);
-        ctx.lineTo(getX(-1.6, s2), horizon + (h - horizon) * s2);
-        ctx.lineTo(getX(-1.8, s2), horizon + (h - horizon) * s2);
+        ctx.moveTo(getX(-1.8, s1), ry1);
+        ctx.lineTo(getX(-1.6, s1), ry1);
+        ctx.lineTo(getX(-1.6, s2), ry2);
+        ctx.lineTo(getX(-1.8, s2), ry2);
         ctx.fill();
 
         // Right Strip
         ctx.beginPath();
-        ctx.moveTo(getX(1.6, s1), horizon + (h - horizon) * s1);
-        ctx.lineTo(getX(1.8, s1), horizon + (h - horizon) * s1);
-        ctx.lineTo(getX(1.8, s2), horizon + (h - horizon) * s2);
-        ctx.lineTo(getX(1.6, s2), horizon + (h - horizon) * s2);
+        ctx.moveTo(getX(1.6, s1), ry1);
+        ctx.lineTo(getX(1.8, s1), ry1);
+        ctx.lineTo(getX(1.8, s2), ry2);
+        ctx.lineTo(getX(1.6, s2), ry2);
         ctx.fill();
       }
 
-      // Lane Lines
+      // Lane Lines — drawn as bent dashed segments so they follow the hills.
       ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 2;
-      ctx.setLineDash([20, 40]);
-      ctx.lineDashOffset = -localDistance % 60;
-      
-      for (let i = -0.5; i <= 0.5; i += 1) {
-        ctx.beginPath();
-        ctx.moveTo(getX(i, 0), horizon);
-        ctx.lineTo(getX(i, 1), h);
-        ctx.stroke();
+      const LANE_SEGMENTS = 18;
+      const dashPeriod = 60;
+      const dashOff = (localDistance % dashPeriod) / dashPeriod;
+      for (let lane = -0.5; lane <= 0.5; lane += 1) {
+        for (let k = 0; k < LANE_SEGMENTS; k++) {
+          // Alternate dash on/off using k + dashOff for forward motion illusion
+          const phase = (k + dashOff) % 2;
+          if (phase >= 1) continue;
+          const s1 = k / LANE_SEGMENTS;
+          const s2 = Math.min(1, (k + 0.5) / LANE_SEGMENTS);
+          ctx.beginPath();
+          ctx.moveTo(getX(lane, s1), yAt(s1));
+          ctx.lineTo(getX(lane, s2), yAt(s2));
+          ctx.stroke();
+        }
       }
-      ctx.setLineDash([]);
 
       // Draw Obstacles
       localObstacles.forEach(obs => {
@@ -1331,7 +1389,7 @@ export default function App() {
 
         const scale = 800 / (relZ + 800); // Increased perspective constant for "further" feel
         const x = getX(obs.lane, scale);
-        const y = horizon + (h - horizon) * scale;
+        const y = yAt(scale);
         const size = 60 * scale; 
 
         if (obs.type === 'truck') {
@@ -1414,7 +1472,7 @@ export default function App() {
 
         const scale = 800 / (relZ + 800);
         const x = getX(p.x, scale);
-        const y = horizon + (h - horizon) * scale;
+        const y = yAt(scale);
         
         // Render ghost car
         ctx.save();
