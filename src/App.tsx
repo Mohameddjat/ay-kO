@@ -1226,18 +1226,22 @@ export default function App() {
       };
 
       // yAt(s): vertical position for perspective fraction s in [0..1].
-      // Adds a vertical "bend" for hills so the road visually climbs/dips.
+      // Adds a smooth vertical "bend" for hills so the road visually climbs/dips.
       // s = perspective scale (0 = horizon, 1 = foreground / camera).
+      // We use a *bounded* look-ahead instead of true inverse perspective —
+      // otherwise adjacent samples near the horizon would land thousands of
+      // units apart in z and produce a chaotic, jittery road.
+      const MAX_LOOK_AHEAD = 2000;
       const yAt = (s: number) => {
         const baseY = horizon + (h - horizon) * s;
-        // Approximate inverse perspective: scale = 800/(z+800) → z = 800*(1-s)/s
-        const sClamp = Math.max(0.04, s);
-        const zRel = (1 - sClamp) * 800 / sClamp;
+        // Quadratic falloff: smooth, max look-ahead at horizon, 0 at camera.
+        const t = 1 - s;
+        const zRel = t * t * MAX_LOOK_AHEAD;
         const slopeAhead = slopeAt(localDistance + zRel);
-        // Negative slope (downhill) should pull road DOWN visually; positive UP.
+        // Negative slope (downhill) pulls road DOWN visually; positive UP.
         // Magnitude tapers near foreground so the camera stays anchored to the car.
-        const taper = Math.pow(1 - s, 0.55);
-        const bend = -slopeAhead * (h - horizon) * 0.85 * taper;
+        const taper = Math.pow(t, 0.7);
+        const bend = -slopeAhead * (h - horizon) * 0.6 * taper;
         return baseY + bend;
       };
 
@@ -1312,24 +1316,30 @@ export default function App() {
         ctx.closePath();
         ctx.fill();
       }
-      // Subtle grass overlay along the bent edges (covers any slim seam where ground differs)
+      // Grass on the SIDES of the bent road. Each polygon traces the road's
+      // outer edge from horizon down to foreground, then closes along the
+      // screen edge — covering everything between the road and screen edge.
       ctx.fillStyle = '#064e3b';
+      // Left side
       ctx.beginPath();
       ctx.moveTo(0, h);
+      ctx.lineTo(0, yAt(0));
       for (let i = 0; i <= ROAD_STRIPS; i++) {
         const s = i / ROAD_STRIPS;
         ctx.lineTo(getX(-1.8, s), yAt(s));
       }
-      ctx.lineTo(0, yAt(0));
+      ctx.lineTo(getX(-1.8, 1), h);
       ctx.closePath();
       ctx.fill();
+      // Right side
       ctx.beginPath();
       ctx.moveTo(w, h);
+      ctx.lineTo(w, yAt(0));
       for (let i = 0; i <= ROAD_STRIPS; i++) {
         const s = i / ROAD_STRIPS;
         ctx.lineTo(getX(1.8, s), yAt(s));
       }
-      ctx.lineTo(w, yAt(0));
+      ctx.lineTo(getX(1.8, 1), h);
       ctx.closePath();
       ctx.fill();
 
