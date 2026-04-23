@@ -56,6 +56,7 @@ class AudioBus {
   private fadeRaf: number | null = null;
   private unlocked = false;
   private pendingTrack: { track: TrackName; loop: boolean; fadeMs: number } | null = null;
+  private retryListenerInstalled = false;
 
   init() {
     if (this.ctx) {
@@ -72,28 +73,45 @@ class AudioBus {
   }
 
   private installUnlockHandler() {
-    if (this.unlocked) return;
+    if (this.retryListenerInstalled) return;
+    this.retryListenerInstalled = true;
     const unlock = () => {
-      if (this.unlocked) return;
       this.unlocked = true;
       try { this.ctx?.resume(); } catch {}
-      // Retry the music element if it failed to autoplay
+      // Retry the current music element if it failed to autoplay
       if (this.musicEl && this.musicEl.paused) {
-        this.musicEl.play().catch(() => {});
+        const el = this.musicEl;
+        const p = el.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            // success — clean up listeners
+            this.removeUnlockListeners(unlock);
+          }).catch(() => {
+            // still blocked — keep listeners
+          });
+        } else {
+          this.removeUnlockListeners(unlock);
+        }
       } else if (this.pendingTrack) {
-        const p = this.pendingTrack;
+        const t = this.pendingTrack;
         this.pendingTrack = null;
-        this.playMusic(p.track, { loop: p.loop, fadeMs: p.fadeMs });
+        this.playMusic(t.track, { loop: t.loop, fadeMs: t.fadeMs });
+      } else {
+        this.removeUnlockListeners(unlock);
       }
-      window.removeEventListener('pointerdown', unlock, true);
-      window.removeEventListener('keydown', unlock, true);
-      window.removeEventListener('touchstart', unlock, true);
-      window.removeEventListener('click', unlock, true);
     };
     window.addEventListener('pointerdown', unlock, true);
     window.addEventListener('keydown', unlock, true);
     window.addEventListener('touchstart', unlock, true);
     window.addEventListener('click', unlock, true);
+  }
+
+  private removeUnlockListeners(fn: (e?: Event) => void) {
+    window.removeEventListener('pointerdown', fn, true);
+    window.removeEventListener('keydown', fn, true);
+    window.removeEventListener('touchstart', fn, true);
+    window.removeEventListener('click', fn, true);
+    this.retryListenerInstalled = false;
   }
 
   private async loadSfx(name: SfxName) {
@@ -135,11 +153,8 @@ class AudioBus {
     const playPromise = next.play();
     if (playPromise && typeof playPromise.catch === 'function') {
       playPromise.catch(() => {
-        // Autoplay was blocked — remember intent and let the unlock handler retry.
-        if (!this.unlocked) {
-          this.pendingTrack = { track, loop, fadeMs };
-          this.installUnlockHandler();
-        }
+        // Autoplay was blocked — install a retry on next user gesture.
+        this.installUnlockHandler();
       });
     }
     const prev = this.musicEl;
