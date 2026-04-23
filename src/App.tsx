@@ -43,6 +43,16 @@ import { audioBus } from './lib/audio';
 const GRID_COLS = 6;
 const GRID_ROWS = 2;
 const CELL_SIZE = 60;
+
+// 4-speed gearbox defaults: low gear = small ratio (high accel, low top speed),
+// high gear = big ratio (low accel, high top speed).
+const DEFAULT_GEARBOX: number[] = [0.55, 0.85, 1.20, 1.65];
+const GEARBOX_OPTIONS = [0.4, 0.55, 0.7, 0.85, 1.0, 1.2, 1.4, 1.65, 1.9, 2.2];
+
+// Procedural slope along the track (returns radians, ~ -0.18 to +0.18).
+const slopeAt = (z: number) => {
+  return Math.sin(z * 0.0011) * 0.11 + Math.sin(z * 0.00037) * 0.07;
+};
 const GEAR_TYPES = [16, 24, 32, 48, 64, 80, 96, 128];
 const TRACK_LENGTH = 100000;
 
@@ -392,6 +402,33 @@ export default function App() {
   const [engineTemp, setEngineTemp] = useState(20);
   const [brakeTemp, setBrakeTemp] = useState(20);
   const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [gearboxRatios, setGearboxRatios] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem('gear_race_gearbox');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 4) return parsed.map(Number);
+      }
+    } catch {}
+    return [...DEFAULT_GEARBOX];
+  });
+  useEffect(() => {
+    localStorage.setItem('gear_race_gearbox', JSON.stringify(gearboxRatios));
+  }, [gearboxRatios]);
+  const [currentGear, setCurrentGear] = useState(2); // 1..4
+  const currentGearRef = useRef(2);
+  useEffect(() => { currentGearRef.current = currentGear; }, [currentGear]);
+  const gearboxRatiosRef = useRef(gearboxRatios);
+  useEffect(() => { gearboxRatiosRef.current = gearboxRatios; }, [gearboxRatios]);
+  const [currentSlope, setCurrentSlope] = useState(0); // radians, for HUD
+
+  // Reset transmission to 2nd gear at the start of every race
+  useEffect(() => {
+    if (gameState === 'racing') {
+      setCurrentGear(2);
+      setCurrentSlope(0);
+    }
+  }, [gameState]);
   const [isConnected, setIsConnected] = useState(false);
   const [isAccelerating, setIsAccelerating] = useState(false);
   const [isBraking, setIsBraking] = useState(false);
@@ -699,6 +736,15 @@ export default function App() {
       if (gameState === 'racing') {
         if (key === 'arrowleft' || key === 'a') setTargetLane(prev => Math.max(-1, prev - 1));
         if (key === 'arrowright' || key === 'd') setTargetLane(prev => Math.min(1, prev + 1));
+        // Gearbox shifting
+        if (key === 'q' || key === '[' || key === 'shift') {
+          setCurrentGear(g => Math.max(1, g - 1));
+          audioBus.playSfx('click');
+        }
+        if (key === 'e' || key === ']') {
+          setCurrentGear(g => Math.min(4, g + 1));
+          audioBus.playSfx('click');
+        }
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -993,12 +1039,17 @@ export default function App() {
 
       sounds.updateEngine(localSpeed, activeAcceleration);
       
-      // Realistic Speed and Torque calculation
+      // Realistic Speed and Torque calculation (with 4-speed gearbox)
       const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
-      let topSpeed = 200 + (gearRatio * 300 * efficiency); 
+      const gboxMult = gearboxRatiosRef.current[currentGearRef.current - 1] ?? 1;
+      const effectiveRatio = Math.max(0.05, gearRatio * gboxMult);
+      let topSpeed = 200 + (effectiveRatio * 300 * efficiency);
       let baseTorque = 150 * efficiency * (hasUpgrade('nitro_system') ? 1.25 : 1);
-      const currentTorque = gearRatio > 0 ? baseTorque / Math.max(0.3, Math.pow(gearRatio, 0.7)) : 0;
+      const currentTorque = effectiveRatio > 0 ? baseTorque / Math.max(0.3, Math.pow(effectiveRatio, 0.7)) : 0;
       let acceleration = currentTorque;
+
+      // Slope (hills): positive = uphill, negative = downhill
+      const slope = slopeAt(localDistance);
       
       // Apply Boost
       if (localBoostTimer > 0) {
@@ -1019,10 +1070,17 @@ export default function App() {
         // Natural deceleration
         localSpeed = Math.max(0, localSpeed - (friction + localSpeed * drag * 0.01) * dt);
       }
-      
+
+      // Slope physics: gravity pulls back uphill / accelerates downhill.
+      // Capped so steep hills feel meaningful but not insurmountable.
+      const gravityPull = slope * 700; // px/s² scale
+      localSpeed = Math.max(0, Math.min(topSpeed * 1.25, localSpeed - gravityPull * dt));
+
       localDistance += localSpeed * dt;
       setDistance(localDistance);
       setCurrentSpeed(localSpeed);
+      // Throttled slope HUD update (every other frame is fine — small object, cheap)
+      setCurrentSlope(slope);
       
       // Update missions
       updateMissionProgress('speed', localSpeed / 10);
@@ -1034,17 +1092,24 @@ export default function App() {
       else localPlayerLane += diff * 10 * dt;
       setPlayerLane(localPlayerLane);
 
-      // Heat management
+      // Heat management — uphill stresses the engine, downhill braking cooks brakes.
+      // Wrong gear (too low for current speed) over-revs and adds heat too.
+      const overRev = Math.max(0, (localSpeed / Math.max(50, topSpeed)) - 0.95) * 8;
       if (activeAcceleration) {
-        const heatGen = (gearRatio * 0.5 + localSpeed * 0.01) * (hasUpgrade('super_cooler') ? 0.6 : 1);
+        const slopeHeat = Math.max(0, slope) * 18; // uphill burst
+        const heatGen = (effectiveRatio * 0.5 + localSpeed * 0.01 + slopeHeat + overRev) * (hasUpgrade('super_cooler') ? 0.6 : 1);
         localEngineTemp = Math.min(100, localEngineTemp + heatGen * dt);
       } else {
-        localEngineTemp = Math.max(20, localEngineTemp - 5 * dt);
+        // Engine still warms a bit going uphill even off-throttle
+        const idleHeat = Math.max(0, slope) * 4 + overRev * 0.4;
+        localEngineTemp = Math.max(20, localEngineTemp + (idleHeat - 5) * dt);
       }
       setEngineTemp(localEngineTemp);
 
       if (brake) {
-        setBrakeTemp(prev => Math.min(100, prev + 20 * dt));
+        // Downhill braking generates much more heat (gravity helping)
+        const downhillBoost = Math.max(0, -slope) * 60;
+        setBrakeTemp(prev => Math.min(100, prev + (20 + downhillBoost) * dt));
       } else {
         setBrakeTemp(prev => Math.max(20, prev - 10 * dt));
       }
@@ -1142,7 +1207,11 @@ export default function App() {
       canvas.width = w;
       canvas.height = h;
 
-      const horizon = h * 0.45; // Adjusted horizon for better perspective on mobile
+      // Horizon shifts up/down with slope to fake the feeling of a hill.
+      // Look ahead a bit so the visual change leads the physics.
+      const visualSlope = slopeAt(localDistance + 600);
+      const baseHorizon = h * 0.45;
+      const horizon = Math.max(h * 0.15, Math.min(h * 0.7, baseHorizon + visualSlope * h * 0.45));
       const LANE_WIDTH_BOTTOM = w < 640 ? w * 0.6 : w * 0.4; // Wider road on mobile
       const LANE_WIDTH_HORIZON = w * 0.02; // 2% of canvas at horizon
 
@@ -1754,6 +1823,43 @@ export default function App() {
                   <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
                   <p className="text-xl sm:text-4xl font-mono font-black text-amber-500 italic">
                     {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
+                  </p>
+                </div>
+                <div className="w-[1px] bg-white/10 hidden sm:block" />
+                <div className="text-center min-w-[64px]">
+                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gear</p>
+                  <div className="flex items-center justify-center gap-1.5 mt-1">
+                    {[1, 2, 3, 4].map(g => (
+                      <button
+                        key={g}
+                        onClick={() => { setCurrentGear(g); audioBus.playSfx('click'); }}
+                        className={`pointer-events-auto w-5 h-7 sm:w-6 sm:h-9 rounded-md text-[10px] sm:text-sm font-mono font-black transition-all border ${
+                          currentGear === g
+                            ? 'bg-rose-600 text-white border-rose-300 scale-110 shadow-md shadow-rose-600/40'
+                            : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
+                        }`}
+                        title={`Gear ${g} (×${gearboxRatios[g - 1].toFixed(2)})`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[8px] text-white/40 font-mono mt-0.5">×{gearboxRatios[currentGear - 1].toFixed(2)}</p>
+                </div>
+                <div className="w-[1px] bg-white/10 hidden sm:block" />
+                <div className="text-center min-w-[64px]">
+                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Slope</p>
+                  <div className="flex items-center justify-center h-[36px] sm:h-[44px]">
+                    <svg width="48" height="36" viewBox="-24 -18 48 36" className="overflow-visible">
+                      <line x1="-22" y1="0" x2="22" y2="0" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" strokeDasharray="2 3" />
+                      <g transform={`rotate(${(-currentSlope * 180 / Math.PI).toFixed(2)})`}>
+                        <line x1="-20" y1="0" x2="20" y2="0" stroke={Math.abs(currentSlope) > 0.12 ? '#f43f5e' : currentSlope > 0.04 ? '#f59e0b' : currentSlope < -0.04 ? '#3b82f6' : '#10b981'} strokeWidth="3" strokeLinecap="round" />
+                        <polygon points="20,0 14,-4 14,4" fill={Math.abs(currentSlope) > 0.12 ? '#f43f5e' : currentSlope > 0.04 ? '#f59e0b' : currentSlope < -0.04 ? '#3b82f6' : '#10b981'} />
+                      </g>
+                    </svg>
+                  </div>
+                  <p className={`text-[10px] sm:text-xs font-mono font-black ${Math.abs(currentSlope) > 0.12 ? 'text-rose-500' : currentSlope > 0.04 ? 'text-amber-400' : currentSlope < -0.04 ? 'text-blue-400' : 'text-emerald-400'}`}>
+                    {(currentSlope * 180 / Math.PI).toFixed(0)}°
                   </p>
                 </div>
                 {gameMode === 'multi' && Object.values(otherPlayers).length > 0 && (
@@ -2658,10 +2764,55 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="mt-8 flex gap-4 items-start bg-rose-500/5 border border-rose-500/20 p-4 rounded-2xl">
+                  {/* 4-Speed Transmission Configuration */}
+                  <div className="mt-8 bg-gradient-to-br from-amber-500/5 to-rose-500/5 border border-amber-500/20 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-black italic uppercase tracking-tighter text-amber-400">4-Speed Gearbox</h3>
+                        <p className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">Pick a ratio for each gear · shift in race with Q / E</p>
+                      </div>
+                      <button
+                        onClick={() => { setGearboxRatios([...DEFAULT_GEARBOX]); audioBus.playSfx('click'); }}
+                        className="px-3 py-1.5 text-[10px] font-black uppercase rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white/60"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3">
+                      {gearboxRatios.map((ratio, i) => {
+                        const idx = GEARBOX_OPTIONS.indexOf(ratio);
+                        const dec = () => {
+                          const next = [...gearboxRatios];
+                          const j = Math.max(0, (idx === -1 ? 0 : idx) - 1);
+                          next[i] = GEARBOX_OPTIONS[j];
+                          setGearboxRatios(next); audioBus.playSfx('click');
+                        };
+                        const inc = () => {
+                          const next = [...gearboxRatios];
+                          const j = Math.min(GEARBOX_OPTIONS.length - 1, (idx === -1 ? 0 : idx) + 1);
+                          next[i] = GEARBOX_OPTIONS[j];
+                          setGearboxRatios(next); audioBus.playSfx('click');
+                        };
+                        const tone = i === 0 ? 'text-rose-400' : i === 1 ? 'text-amber-400' : i === 2 ? 'text-emerald-400' : 'text-blue-400';
+                        return (
+                          <div key={i} className="bg-black/40 border border-white/10 rounded-xl p-3 flex flex-col items-center">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${tone}`}>Gear {i + 1}</p>
+                            <p className="text-[9px] text-white/30 italic mb-2">{i === 0 ? 'High torque' : i === 3 ? 'Top speed' : 'Balanced'}</p>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={dec} className="w-7 h-7 rounded-md bg-white/5 hover:bg-white/15 text-white/70 font-black text-sm border border-white/10">−</button>
+                              <span className={`font-mono font-black text-lg w-12 text-center ${tone}`}>×{ratio.toFixed(2)}</span>
+                              <button onClick={inc} className="w-7 h-7 rounded-md bg-white/5 hover:bg-white/15 text-white/70 font-black text-sm border border-white/10">+</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex gap-4 items-start bg-rose-500/5 border border-rose-500/20 p-4 rounded-2xl">
                     <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
                     <p className="text-xs text-rose-200/60 leading-relaxed italic">
-                      Tip: Connect <span className="text-blue-400 font-bold">Engine</span> to <span className="text-green-400 font-bold">Wheel</span>. Use <span className="text-rose-400 font-bold">large gears</span> for torque, <span className="text-blue-400 font-bold">small gears</span> for speed.
+                      Tip: Connect <span className="text-blue-400 font-bold">Engine</span> to <span className="text-green-400 font-bold">Wheel</span>. Use <span className="text-rose-400 font-bold">large gears</span> for torque, <span className="text-blue-400 font-bold">small gears</span> for speed. Watch the <span className="text-amber-400 font-bold">slope indicator</span> — uphill heats the engine, downhill cooks the brakes.
                     </p>
                   </div>
 

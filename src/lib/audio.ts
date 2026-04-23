@@ -183,7 +183,8 @@ class AudioBus {
     const startTime = performance.now();
     const tick = (now: number) => {
       const t = Math.min(1, (now - startTime) / ms);
-      el.volume = start + (target - start) * t;
+      const v = start + (target - start) * t;
+      el.volume = Math.max(0, Math.min(1, v));
       if (t < 1) requestAnimationFrame(tick);
       else if (done) done();
     };
