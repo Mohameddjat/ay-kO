@@ -1192,11 +1192,17 @@ export default function App() {
 
       // Obstacle generation (Distance-based for better spacing)
       if (localDistance > nextObstacleZRef.current) {
+        const r = Math.random();
+        const type = r < 0.30 ? 'truck'
+                   : r < 0.55 ? 'car'
+                   : r < 0.78 ? 'van'
+                   : r < 0.92 ? 'bike'
+                   : 'bus';
         localObstacles.push({
           id: Math.random().toString(36).substr(2, 9),
           lane: Math.floor(Math.random() * 3) - 1,
           z: localDistance + 2500,
-          type: Math.random() > 0.5 ? 'truck' : 'bike'
+          type
         });
         nextObstacleZRef.current = localDistance + 400 + Math.random() * 600;
       }
@@ -1444,76 +1450,230 @@ export default function App() {
         const scale = 800 / (relZ + 800); // Increased perspective constant for "further" feel
         const x = getX(obs.lane, scale);
         const y = yAt(scale);
-        const size = 60 * scale; 
+        const size = 78 * scale; // Bumped up from 60 for chunkier presence
+
+        // Soft shadow under every vehicle
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + size * 0.04, size * 0.55, size * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill();
 
         if (obs.type === 'truck') {
-          // Draw Truck (Rear View)
-          const truckW = size;
-          const truckH = size * 1.2;
-          
-          // Main Trailer Body
-          ctx.fillStyle = '#475569'; // Grey trailer
+          const truckW = size * 1.1;
+          const truckH = size * 1.35;
+          // Trailer body with subtle vertical gradient
+          const grad = ctx.createLinearGradient(x, y - truckH, x, y);
+          grad.addColorStop(0, '#64748b');
+          grad.addColorStop(1, '#334155');
+          ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.roundRect(x - truckW/2, y - truckH, truckW, truckH - size * 0.1, 4 * scale);
+          ctx.roundRect(x - truckW/2, y - truckH, truckW, truckH - size * 0.12, 6 * scale);
           ctx.fill();
-          
-          // Door seams (Rear doors of trailer)
-          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-          ctx.lineWidth = 1;
+          // Top highlight band
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.fillRect(x - truckW/2 + 3 * scale, y - truckH + 3 * scale, truckW - 6 * scale, size * 0.08);
+          // Center door seam
+          ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+          ctx.lineWidth = Math.max(1, 1.5 * scale);
           ctx.beginPath();
-          ctx.moveTo(x, y - truckH);
-          ctx.lineTo(x, y - size * 0.1);
+          ctx.moveTo(x, y - truckH + 4 * scale);
+          ctx.lineTo(x, y - size * 0.15);
           ctx.stroke();
-          
-          // Tail Lights
-          ctx.fillStyle = '#ef4444'; // Red
+          // Door handles
+          ctx.fillStyle = '#cbd5e1';
+          ctx.fillRect(x - size * 0.12, y - size * 0.55, size * 0.05, size * 0.04);
+          ctx.fillRect(x + size * 0.07, y - size * 0.55, size * 0.05, size * 0.04);
+          // Tail Lights with glow
+          ctx.fillStyle = '#ef4444';
+          ctx.shadowBlur = 18 * scale;
+          ctx.shadowColor = '#ef4444';
+          ctx.fillRect(x - truckW/2 + 6 * scale, y - size * 0.32, size * 0.18, size * 0.12);
+          ctx.fillRect(x + truckW/2 - 6 * scale - size * 0.18, y - size * 0.32, size * 0.18, size * 0.12);
+          ctx.shadowBlur = 0;
+          // Bumper
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(x - truckW/2 - 2 * scale, y - size * 0.18, truckW + 4 * scale, size * 0.06);
+          // Wheels
+          ctx.fillStyle = '#0a0a0a';
+          ctx.beginPath();
+          ctx.roundRect(x - truckW/2 + 2 * scale, y - size * 0.12, size * 0.22, size * 0.12, 3 * scale);
+          ctx.roundRect(x + truckW/2 - 2 * scale - size * 0.22, y - size * 0.12, size * 0.22, size * 0.12, 3 * scale);
+          ctx.fill();
+        } else if (obs.type === 'bus') {
+          const busW = size * 1.2;
+          const busH = size * 1.45;
+          // Bus body — yellow school-bus style
+          const grad = ctx.createLinearGradient(x, y - busH, x, y);
+          grad.addColorStop(0, '#fde047');
+          grad.addColorStop(1, '#ca8a04');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(x - busW/2, y - busH, busW, busH - size * 0.12, 8 * scale);
+          ctx.fill();
+          // Window strip
+          ctx.fillStyle = 'rgba(15,23,42,0.85)';
+          ctx.fillRect(x - busW/2 + 5 * scale, y - busH + 6 * scale, busW - 10 * scale, size * 0.32);
+          // Window dividers
+          ctx.strokeStyle = '#ca8a04';
+          ctx.lineWidth = Math.max(1, 1.5 * scale);
+          for (let i = 1; i < 4; i++) {
+            const wx = x - busW/2 + 5 * scale + (busW - 10 * scale) * (i / 4);
+            ctx.beginPath();
+            ctx.moveTo(wx, y - busH + 6 * scale);
+            ctx.lineTo(wx, y - busH + 6 * scale + size * 0.32);
+            ctx.stroke();
+          }
+          // Side stripe
+          ctx.fillStyle = '#000';
+          ctx.fillRect(x - busW/2 + 4 * scale, y - size * 0.55, busW - 8 * scale, size * 0.06);
+          // Tail lights
+          ctx.fillStyle = '#ef4444';
           ctx.shadowBlur = 15 * scale;
           ctx.shadowColor = '#ef4444';
-          ctx.fillRect(x - truckW/2 + 5 * scale, y - size * 0.3, size * 0.15, size * 0.1);
-          ctx.fillRect(x + truckW/2 - 5 * scale - size * 0.15, y - size * 0.3, size * 0.15, size * 0.1);
+          ctx.fillRect(x - busW/2 + 6 * scale, y - size * 0.32, size * 0.16, size * 0.1);
+          ctx.fillRect(x + busW/2 - 6 * scale - size * 0.16, y - size * 0.32, size * 0.16, size * 0.1);
           ctx.shadowBlur = 0;
-          
-          // Wheels (Back wheels peek out)
-          ctx.fillStyle = '#000';
-          ctx.fillRect(x - truckW/2 + 2 * scale, y - size * 0.1, size * 0.2, size * 0.1);
-          ctx.fillRect(x + truckW/2 - 2 * scale - size * 0.2, y - size * 0.1, size * 0.2, size * 0.1);
-          
           // Bumper
-          ctx.fillStyle = '#1e293b';
-          ctx.fillRect(x - truckW/2 - 2 * scale, y - size * 0.2, truckW + 4 * scale, size * 0.05);
-        } else {
-          // Draw Bike (Rear View)
-          const bikeW = size * 0.4;
-          const bikeH = size * 0.8;
-          
-          // Rear tire
-          ctx.fillStyle = '#000';
+          ctx.fillStyle = '#1f2937';
+          ctx.fillRect(x - busW/2 - 2 * scale, y - size * 0.18, busW + 4 * scale, size * 0.06);
+          // Wheels
+          ctx.fillStyle = '#0a0a0a';
           ctx.beginPath();
-          ctx.roundRect(x - bikeW/6, y - size * 0.2, bikeW/3, size * 0.2, 2 * scale);
+          ctx.roundRect(x - busW/2 + 4 * scale, y - size * 0.12, size * 0.2, size * 0.12, 3 * scale);
+          ctx.roundRect(x + busW/2 - 4 * scale - size * 0.2, y - size * 0.12, size * 0.2, size * 0.12, 3 * scale);
           ctx.fill();
-          
-          // Bike Body/Seat
-          ctx.fillStyle = '#e11d48'; // Red bike
+        } else if (obs.type === 'van') {
+          const vanW = size * 0.95;
+          const vanH = size * 1.05;
+          // Van body — white delivery van
+          const grad = ctx.createLinearGradient(x, y - vanH, x, y);
+          grad.addColorStop(0, '#f1f5f9');
+          grad.addColorStop(1, '#94a3b8');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(x - vanW/2, y - vanH, vanW, vanH - size * 0.1, 6 * scale);
+          ctx.fill();
+          // Roof curve highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          ctx.fillRect(x - vanW/2 + 4 * scale, y - vanH + 3 * scale, vanW - 8 * scale, size * 0.05);
+          // Rear window
+          ctx.fillStyle = 'rgba(15,23,42,0.75)';
+          ctx.beginPath();
+          ctx.roundRect(x - vanW/2 + 6 * scale, y - vanH + size * 0.15, vanW - 12 * scale, size * 0.22, 3 * scale);
+          ctx.fill();
+          // Door split
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+          ctx.lineWidth = Math.max(1, 1.2 * scale);
+          ctx.beginPath();
+          ctx.moveTo(x, y - vanH + size * 0.15);
+          ctx.lineTo(x, y - size * 0.12);
+          ctx.stroke();
+          // Tail lights
+          ctx.fillStyle = '#f97316';
+          ctx.shadowBlur = 14 * scale;
+          ctx.shadowColor = '#f97316';
+          ctx.fillRect(x - vanW/2 + 4 * scale, y - size * 0.28, size * 0.13, size * 0.1);
+          ctx.fillRect(x + vanW/2 - 4 * scale - size * 0.13, y - size * 0.28, size * 0.13, size * 0.1);
+          ctx.shadowBlur = 0;
+          // Bumper
+          ctx.fillStyle = '#1f2937';
+          ctx.fillRect(x - vanW/2 - 2 * scale, y - size * 0.16, vanW + 4 * scale, size * 0.05);
+          // Wheels
+          ctx.fillStyle = '#0a0a0a';
+          ctx.beginPath();
+          ctx.roundRect(x - vanW/2 + 3 * scale, y - size * 0.1, size * 0.18, size * 0.1, 3 * scale);
+          ctx.roundRect(x + vanW/2 - 3 * scale - size * 0.18, y - size * 0.1, size * 0.18, size * 0.1, 3 * scale);
+          ctx.fill();
+        } else if (obs.type === 'car') {
+          const carW = size * 0.9;
+          const carH = size * 0.7;
+          // Car body — sporty blue sedan
+          const grad = ctx.createLinearGradient(x, y - carH, x, y);
+          grad.addColorStop(0, '#3b82f6');
+          grad.addColorStop(1, '#1e40af');
+          ctx.fillStyle = grad;
+          // Lower body
+          ctx.beginPath();
+          ctx.roundRect(x - carW/2, y - carH * 0.55, carW, carH * 0.45, 5 * scale);
+          ctx.fill();
+          // Cabin / roof
+          ctx.beginPath();
+          ctx.moveTo(x - carW * 0.35, y - carH * 0.55);
+          ctx.lineTo(x - carW * 0.28, y - carH);
+          ctx.lineTo(x + carW * 0.28, y - carH);
+          ctx.lineTo(x + carW * 0.35, y - carH * 0.55);
+          ctx.closePath();
+          ctx.fill();
+          // Rear window
+          ctx.fillStyle = 'rgba(15,23,42,0.85)';
+          ctx.beginPath();
+          ctx.moveTo(x - carW * 0.30, y - carH * 0.58);
+          ctx.lineTo(x - carW * 0.24, y - carH * 0.95);
+          ctx.lineTo(x + carW * 0.24, y - carH * 0.95);
+          ctx.lineTo(x + carW * 0.30, y - carH * 0.58);
+          ctx.closePath();
+          ctx.fill();
+          // Tail lights
+          ctx.fillStyle = '#ef4444';
+          ctx.shadowBlur = 16 * scale;
+          ctx.shadowColor = '#ef4444';
+          ctx.fillRect(x - carW/2 + 3 * scale, y - carH * 0.45, size * 0.12, size * 0.07);
+          ctx.fillRect(x + carW/2 - 3 * scale - size * 0.12, y - carH * 0.45, size * 0.12, size * 0.07);
+          ctx.shadowBlur = 0;
+          // License plate
+          ctx.fillStyle = '#fde68a';
+          ctx.fillRect(x - size * 0.12, y - carH * 0.32, size * 0.24, size * 0.08);
+          // Bumper
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(x - carW/2 - 2 * scale, y - size * 0.13, carW + 4 * scale, size * 0.04);
+          // Wheels
+          ctx.fillStyle = '#0a0a0a';
+          ctx.beginPath();
+          ctx.roundRect(x - carW/2 + 2 * scale, y - size * 0.09, size * 0.18, size * 0.09, 3 * scale);
+          ctx.roundRect(x + carW/2 - 2 * scale - size * 0.18, y - size * 0.09, size * 0.18, size * 0.09, 3 * scale);
+          ctx.fill();
+        } else {
+          // Bike (Rear View) — refined
+          const bikeW = size * 0.5;
+          const bikeH = size * 0.95;
+          // Rear tire
+          ctx.fillStyle = '#0a0a0a';
+          ctx.beginPath();
+          ctx.roundRect(x - bikeW/5, y - size * 0.22, (bikeW/5) * 2, size * 0.22, 3 * scale);
+          ctx.fill();
+          // Tail / fairing
+          const grad = ctx.createLinearGradient(x, y - bikeH, x, y - size * 0.3);
+          grad.addColorStop(0, '#f43f5e');
+          grad.addColorStop(1, '#9f1239');
+          ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.moveTo(x - bikeW/2, y - size * 0.3);
           ctx.lineTo(x + bikeW/2, y - size * 0.3);
-          ctx.lineTo(x + bikeW/4, y - bikeH);
-          ctx.lineTo(x - bikeW/4, y - bikeH);
+          ctx.lineTo(x + bikeW/4, y - bikeH * 0.85);
+          ctx.lineTo(x - bikeW/4, y - bikeH * 0.85);
           ctx.closePath();
           ctx.fill();
-          
-          // Rider Back (Simplified)
+          // Rider torso
           ctx.fillStyle = '#1e293b';
           ctx.beginPath();
-          ctx.roundRect(x - bikeW/3, y - bikeH - size * 0.2, (bikeW/3) * 2, size * 0.4, 4 * scale);
+          ctx.roundRect(x - bikeW/3, y - bikeH - size * 0.15, (bikeW/3) * 2, size * 0.45, 5 * scale);
           ctx.fill();
-          
-          // Rear Light
-          ctx.fillStyle = '#ff0000';
-          ctx.shadowBlur = 10 * scale;
-          ctx.shadowColor = '#ff0000';
+          // Helmet
+          ctx.fillStyle = '#0f172a';
           ctx.beginPath();
-          ctx.arc(x, y - size * 0.5, size * 0.05, 0, Math.PI * 2);
+          ctx.arc(x, y - bikeH - size * 0.05, size * 0.13, 0, Math.PI * 2);
+          ctx.fill();
+          // Helmet visor
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.arc(x, y - bikeH - size * 0.05, size * 0.09, Math.PI * 1.1, Math.PI * 1.9);
+          ctx.fill();
+          // Rear Light
+          ctx.fillStyle = '#ff2d2d';
+          ctx.shadowBlur = 12 * scale;
+          ctx.shadowColor = '#ff2d2d';
+          ctx.beginPath();
+          ctx.arc(x, y - size * 0.5, size * 0.06, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
         }
@@ -1913,17 +2073,79 @@ export default function App() {
               </div>
             </div>
 
-            {/* Dashboard and Thermal Overlays - Anchored to Corners */}
+            {/* Vertical Speed Gauge - Left Side (only during racing) */}
+            {gameState === 'racing' && (() => {
+              const efficiency = Math.max(0.5, 1 - (connectedGears.length * 0.02));
+              const turboTopMult = 1 + (tuning.turbo - 3) * 0.07;
+              const estTopSpeed = (200 + (gearRatio * 300 * efficiency)) * turboTopMult;
+              const speedKmh = currentSpeed / 10;
+              const speedMaxKmh = Math.max(50, estTopSpeed / 10);
+              const speedPct = Math.min(1, speedKmh / speedMaxKmh);
+              const torqueVal = gearRatio > 0
+                ? (150 * efficiency * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))
+                : 0;
+              const torqueMax = 320;
+              const torquePct = Math.min(1, torqueVal / torqueMax);
+              return (
+                <>
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-30 pointer-events-none hidden sm:flex flex-col items-center bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl px-3 py-4 shadow-xl">
+                    <p className="text-[9px] text-white/50 uppercase font-black tracking-widest mb-2">Speed</p>
+                    <div className="relative w-4 h-48 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                      <motion.div
+                        className="absolute bottom-0 left-0 right-0 rounded-full"
+                        style={{
+                          background: 'linear-gradient(to top, #f43f5e, #fb923c, #fbbf24)'
+                        }}
+                        animate={{ height: `${speedPct * 100}%` }}
+                        transition={{ duration: 0.15 }}
+                      />
+                      {[0.25, 0.5, 0.75].map(t => (
+                        <div key={t} className="absolute left-0 right-0 h-px bg-white/10" style={{ bottom: `${t * 100}%` }} />
+                      ))}
+                    </div>
+                    <p className="mt-3 text-2xl font-mono font-black text-rose-500 italic leading-none">
+                      {speedKmh.toFixed(0)}
+                    </p>
+                    <p className="text-[9px] text-white/40 font-black tracking-widest mt-0.5">KM/H</p>
+                  </div>
+
+                  {/* Vertical Torque Gauge - Right Side */}
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 z-30 pointer-events-none hidden sm:flex flex-col items-center bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl px-3 py-4 shadow-xl">
+                    <p className="text-[9px] text-white/50 uppercase font-black tracking-widest mb-2">Torque</p>
+                    <div className="relative w-4 h-48 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                      <motion.div
+                        className="absolute bottom-0 left-0 right-0 rounded-full"
+                        style={{
+                          background: 'linear-gradient(to top, #92400e, #f59e0b, #fde68a)'
+                        }}
+                        animate={{ height: `${torquePct * 100}%` }}
+                        transition={{ duration: 0.15 }}
+                      />
+                      {[0.25, 0.5, 0.75].map(t => (
+                        <div key={t} className="absolute left-0 right-0 h-px bg-white/10" style={{ bottom: `${t * 100}%` }} />
+                      ))}
+                    </div>
+                    <p className="mt-3 text-2xl font-mono font-black text-amber-500 italic leading-none">
+                      {torqueVal.toFixed(0)}
+                    </p>
+                    <p className="text-[9px] text-white/40 font-black tracking-widest mt-0.5">Nm</p>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* Bottom Dashboard - Auxiliary indicators (only during racing) */}
+            {gameState === 'racing' && (
             <div className="absolute bottom-36 sm:bottom-32 left-0 right-0 sm:right-auto sm:left-4 z-30 pointer-events-none px-4 sm:px-0">
               <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 sm:p-3 flex justify-between sm:justify-start gap-2 sm:gap-12 shadow-xl overflow-x-auto">
-                <div className="text-center min-w-[60px]">
-                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
-                  <p className="text-2xl sm:text-5xl font-mono font-black text-rose-500 italic">
+                {/* Speed shown only on mobile here (vertical gauge is desktop-only) */}
+                <div className="text-center min-w-[60px] sm:hidden">
+                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
+                  <p className="text-2xl font-mono font-black text-rose-500 italic">
                     {(currentSpeed / 10).toFixed(0)}
-                    <span className="text-[8px] sm:text-xs ml-0.5 opacity-60 text-white">KM/H</span>
+                    <span className="text-[8px] ml-0.5 opacity-60 text-white">KM/H</span>
                   </p>
                 </div>
-                <div className="w-[1px] bg-white/10 hidden sm:block" />
                 <div className="text-center min-w-[60px]">
                   <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
                   <p className="text-xl sm:text-4xl font-mono font-black text-blue-400 italic">
@@ -1931,9 +2153,10 @@ export default function App() {
                   </p>
                 </div>
                 <div className="w-[1px] bg-white/10 hidden sm:block" />
-                <div className="text-center min-w-[60px]">
-                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
-                  <p className="text-xl sm:text-4xl font-mono font-black text-amber-500 italic">
+                {/* Torque shown only on mobile here */}
+                <div className="text-center min-w-[60px] sm:hidden">
+                  <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
+                  <p className="text-xl font-mono font-black text-amber-500 italic">
                     {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
                   </p>
                 </div>
@@ -1988,7 +2211,9 @@ export default function App() {
                 )}
               </div>
             </div>
+            )}
 
+            {gameState === 'racing' && (
             <div className="absolute bottom-[220px] sm:bottom-32 right-4 z-30 pointer-events-none">
               {/* Thermal HUD - Circular Gauges */}
               <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row gap-4 sm:gap-10 shadow-xl">
@@ -2039,6 +2264,7 @@ export default function App() {
                 </div>
               </div>
             </div>
+            )}
 
             <div className="flex-1 relative overflow-hidden bg-transparent">
               <div ref={canvasRef} className="w-full h-full relative">
