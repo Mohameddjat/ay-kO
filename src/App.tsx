@@ -2138,10 +2138,10 @@ export default function App() {
               );
             })()}
 
-            {/* Bottom Dashboard - Auxiliary indicators (only during racing) */}
+            {/* Auxiliary indicators — vertical column on the left during racing (desktop), bottom bar on mobile */}
             {gameState === 'racing' && (
-            <div className="absolute bottom-36 sm:bottom-32 left-0 right-0 sm:right-auto sm:left-4 z-30 pointer-events-none px-4 sm:px-0">
-              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 sm:p-3 flex justify-between sm:justify-start gap-2 sm:gap-12 shadow-xl overflow-x-auto">
+            <div className="absolute bottom-36 left-0 right-0 px-4 sm:px-0 sm:bottom-auto sm:left-2 sm:right-auto sm:top-56 z-30 pointer-events-none">
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 sm:p-3 flex sm:flex-col justify-between sm:justify-start gap-2 sm:gap-3 shadow-xl overflow-x-auto sm:overflow-visible sm:w-[110px]">
                 {/* Speed shown only on mobile here (vertical gauge is desktop-only) */}
                 <div className="text-center min-w-[60px] sm:hidden">
                   <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Speed</p>
@@ -2150,13 +2150,14 @@ export default function App() {
                     <span className="text-[8px] ml-0.5 opacity-60 text-white">KM/H</span>
                   </p>
                 </div>
-                <div className="text-center min-w-[60px]">
-                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
-                  <p className="text-xl sm:text-4xl font-mono font-black text-blue-400 italic">
+                <div className="text-center min-w-[60px] sm:min-w-0">
+                  <p className="text-[8px] sm:text-[9px] text-white/40 uppercase font-black tracking-widest mb-1">Efficiency</p>
+                  <p className="text-xl sm:text-2xl font-mono font-black text-blue-400 italic leading-none">
                     {(Math.max(0.5, 1 - (connectedGears.length * 0.02)) * 100).toFixed(0)}%
                   </p>
                 </div>
-                <div className="w-[1px] bg-white/10 hidden sm:block" />
+                <div className="w-[1px] bg-white/10 hidden sm:hidden" />
+                <div className="hidden sm:block h-px bg-white/10" />
                 {/* Torque shown only on mobile here */}
                 <div className="text-center min-w-[60px] sm:hidden">
                   <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-1">Torque</p>
@@ -2164,15 +2165,14 @@ export default function App() {
                     {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
                   </p>
                 </div>
-                <div className="w-[1px] bg-white/10 hidden sm:block" />
-                <div className="text-center min-w-[64px]">
-                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gear</p>
-                  <div className="flex items-center justify-center gap-1.5 mt-1">
+                <div className="text-center min-w-[64px] sm:min-w-0">
+                  <p className="text-[8px] sm:text-[9px] text-white/40 uppercase font-black tracking-widest mb-1">Gear</p>
+                  <div className="flex items-center justify-center gap-1 mt-1">
                     {[1, 2, 3, 4].map(g => (
                       <button
                         key={g}
                         onClick={() => { setCurrentGear(g); audioBus.playSfx('click'); }}
-                        className={`pointer-events-auto w-5 h-7 sm:w-6 sm:h-9 rounded-md text-[10px] sm:text-sm font-mono font-black transition-all border ${
+                        className={`pointer-events-auto w-5 h-7 sm:w-5 sm:h-7 rounded-md text-[10px] font-mono font-black transition-all border ${
                           currentGear === g
                             ? 'bg-rose-600 text-white border-rose-300 scale-110 shadow-md shadow-rose-600/40'
                             : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
@@ -2185,11 +2185,11 @@ export default function App() {
                   </div>
                   <p className="text-[8px] text-white/40 font-mono mt-0.5">×{gearboxRatios[currentGear - 1].toFixed(2)}</p>
                 </div>
-                <div className="w-[1px] bg-white/10 hidden sm:block" />
-                <div className="text-center min-w-[64px]">
-                  <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Slope</p>
-                  <div className="flex items-center justify-center h-[36px] sm:h-[44px]">
-                    <svg width="48" height="36" viewBox="-24 -18 48 36" className="overflow-visible">
+                <div className="hidden sm:block h-px bg-white/10" />
+                <div className="text-center min-w-[64px] sm:min-w-0">
+                  <p className="text-[8px] sm:text-[9px] text-white/40 uppercase font-black tracking-widest mb-1">Slope</p>
+                  <div className="flex items-center justify-center h-[28px] sm:h-[28px]">
+                    <svg width="48" height="28" viewBox="-24 -14 48 28" className="overflow-visible">
                       <line x1="-22" y1="0" x2="22" y2="0" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" strokeDasharray="2 3" />
                       <g transform={`rotate(${(-currentSlope * 180 / Math.PI).toFixed(2)})`}>
                         <line x1="-20" y1="0" x2="20" y2="0" stroke={Math.abs(currentSlope) > 0.12 ? '#f43f5e' : currentSlope > 0.04 ? '#f59e0b' : currentSlope < -0.04 ? '#3b82f6' : '#10b981'} strokeWidth="3" strokeLinecap="round" />
@@ -2197,18 +2197,18 @@ export default function App() {
                       </g>
                     </svg>
                   </div>
-                  <p className={`text-[10px] sm:text-xs font-mono font-black ${Math.abs(currentSlope) > 0.12 ? 'text-rose-500' : currentSlope > 0.04 ? 'text-amber-400' : currentSlope < -0.04 ? 'text-blue-400' : 'text-emerald-400'}`}>
+                  <p className={`text-[10px] font-mono font-black ${Math.abs(currentSlope) > 0.12 ? 'text-rose-500' : currentSlope > 0.04 ? 'text-amber-400' : currentSlope < -0.04 ? 'text-blue-400' : 'text-emerald-400'}`}>
                     {(currentSlope * 180 / Math.PI).toFixed(0)}°
                   </p>
                 </div>
                 {gameMode === 'multi' && Object.values(otherPlayers).length > 0 && (
                   <>
-                    <div className="w-[1px] bg-white/10 hidden sm:block" />
-                    <div className="text-center min-w-[60px]">
-                      <p className="text-[8px] sm:text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Gap</p>
-                      <p className={`text-xl sm:text-4xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
+                    <div className="hidden sm:block h-px bg-white/10" />
+                    <div className="text-center min-w-[60px] sm:min-w-0">
+                      <p className="text-[8px] sm:text-[9px] text-white/40 uppercase font-black tracking-widest mb-1">Gap</p>
+                      <p className={`text-xl sm:text-2xl font-mono font-black ${(distance - (Object.values(otherPlayers)[0] as PlayerState).y) > 0 ? 'text-green-400' : 'text-rose-500'}`}>
                         {((distance - (Object.values(otherPlayers)[0] as PlayerState).y) / 10).toFixed(1)}
-                          <span className="text-[8px] sm:text-xs ml-0.5 opacity-40 text-white font-black italic">M</span>
+                          <span className="text-[8px] ml-0.5 opacity-40 text-white font-black italic">M</span>
                       </p>
                     </div>
                   </>
