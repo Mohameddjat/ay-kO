@@ -6,3 +6,9 @@ id = "lr5RF3Xh_hWMuL9di35iF"
 uri = "file://exports/gearshift-itchio.zip"
 type = "unspecified"
 title = "GEARSHIFT — تحديث التخصيص الميكانيكي"
+
+[[outputs]]
+id = "GaL4PkeDP5c68rb3D4fcc"
+uri = "file://exports/gearshift-itch.zip"
+type = "unspecified"
+title = "GEARSHIFT — itch.io upload (HTML5)"
