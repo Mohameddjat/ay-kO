@@ -2088,9 +2088,8 @@ export default function App() {
               const torquePct = Math.min(1, torqueVal / torqueMax);
               return (
                 <>
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-30 pointer-events-none hidden sm:flex flex-col items-center bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl px-3 py-4 shadow-xl">
-                    <p className="text-[9px] text-white/50 uppercase font-black tracking-widest mb-2">Speed</p>
-                    <div className="relative w-4 h-48 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                  <div className="absolute left-2 top-24 z-30 pointer-events-none hidden sm:flex flex-row items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-2 py-2 shadow-xl">
+                    <div className="relative w-3 h-28 bg-white/5 rounded-full overflow-hidden border border-white/10">
                       <motion.div
                         className="absolute bottom-0 left-0 right-0 rounded-full"
                         style={{
@@ -2103,16 +2102,18 @@ export default function App() {
                         <div key={t} className="absolute left-0 right-0 h-px bg-white/10" style={{ bottom: `${t * 100}%` }} />
                       ))}
                     </div>
-                    <p className="mt-3 text-2xl font-mono font-black text-rose-500 italic leading-none">
-                      {speedKmh.toFixed(0)}
-                    </p>
-                    <p className="text-[9px] text-white/40 font-black tracking-widest mt-0.5">KM/H</p>
+                    <div className="flex flex-col items-start leading-tight">
+                      <p className="text-[8px] text-white/50 uppercase font-black tracking-widest">Speed</p>
+                      <p className="text-lg font-mono font-black text-rose-500 italic">
+                        {speedKmh.toFixed(0)}
+                      </p>
+                      <p className="text-[8px] text-white/40 font-black tracking-widest">KM/H</p>
+                    </div>
                   </div>
 
-                  {/* Vertical Torque Gauge - Right Side */}
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 z-30 pointer-events-none hidden sm:flex flex-col items-center bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl px-3 py-4 shadow-xl">
-                    <p className="text-[9px] text-white/50 uppercase font-black tracking-widest mb-2">Torque</p>
-                    <div className="relative w-4 h-48 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                  {/* Vertical Torque Gauge - Top Right */}
+                  <div className="absolute right-2 top-24 z-30 pointer-events-none hidden sm:flex flex-row-reverse items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-2 py-2 shadow-xl">
+                    <div className="relative w-3 h-28 bg-white/5 rounded-full overflow-hidden border border-white/10">
                       <motion.div
                         className="absolute bottom-0 left-0 right-0 rounded-full"
                         style={{
@@ -2125,10 +2126,13 @@ export default function App() {
                         <div key={t} className="absolute left-0 right-0 h-px bg-white/10" style={{ bottom: `${t * 100}%` }} />
                       ))}
                     </div>
-                    <p className="mt-3 text-2xl font-mono font-black text-amber-500 italic leading-none">
-                      {torqueVal.toFixed(0)}
-                    </p>
-                    <p className="text-[9px] text-white/40 font-black tracking-widest mt-0.5">Nm</p>
+                    <div className="flex flex-col items-end leading-tight">
+                      <p className="text-[8px] text-white/50 uppercase font-black tracking-widest">Torque</p>
+                      <p className="text-lg font-mono font-black text-amber-500 italic">
+                        {torqueVal.toFixed(0)}
+                      </p>
+                      <p className="text-[8px] text-white/40 font-black tracking-widest">Nm</p>
+                    </div>
                   </div>
                 </>
               );
@@ -2666,15 +2670,6 @@ export default function App() {
             {gameState === 'racing' && (
               <div className="absolute bottom-6 left-4 right-4 pointer-events-none z-40">
                 <div className="flex flex-col gap-4">
-                  <div className="flex justify-center">
-                    <div className="bg-black/40 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
-                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                       <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest italic">
-                        Manual Drive Active
-                      </p>
-                    </div>
-                  </div>
-
                   <div className="flex justify-between items-end">
                     {/* Left: Steering/Brake */}
                     <div className="flex gap-4">
