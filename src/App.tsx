@@ -67,6 +67,67 @@ const slopeAt = (z: number) => {
 const GEAR_TYPES = [16, 24, 32, 48, 64, 80, 96, 128];
 const TRACK_LENGTH = 100000;
 
+// ── New systems ──────────────────────────────────────────────────────────────
+
+// Tracks / themes
+type TrackTheme = 'highway' | 'desert' | 'city' | 'mountain';
+const TRACK_THEMES: Record<TrackTheme, {
+  name: string;
+  emoji: string;
+  desc: string;
+  skyTop: string;
+  skyBottom: string;
+  ground: string;
+  roadColor: string;
+  mountainColor: string;
+}> = {
+  highway:  { name: 'Highway',  emoji: '🛣️', desc: 'Classic asphalt at sunset',     skyTop: '#1e3a8a', skyBottom: '#60a5fa', ground: '#064e3b', roadColor: '#1a1a1a', mountainColor: '#1e293b' },
+  desert:   { name: 'Desert',   emoji: '🏜️', desc: 'Dusty dunes and red rocks',     skyTop: '#c2410c', skyBottom: '#fbbf24', ground: '#a16207', roadColor: '#3f3f46', mountainColor: '#7c2d12' },
+  city:     { name: 'City',     emoji: '🌃', desc: 'Neon-lit night highway',        skyTop: '#0f0f1e', skyBottom: '#581c87', ground: '#1f2937', roadColor: '#0a0a0a', mountainColor: '#1e1b4b' },
+  mountain: { name: 'Mountain', emoji: '🏔️', desc: 'Snowy alpine pass',              skyTop: '#1e293b', skyBottom: '#94a3b8', ground: '#e2e8f0', roadColor: '#374151', mountainColor: '#475569' },
+};
+
+// Weather
+type Weather = 'clear' | 'rain' | 'fog' | 'night';
+const WEATHER_OPTS: Record<Weather, { name: string; emoji: string; gripMult: number; visMult: number }> = {
+  clear: { name: 'Clear',  emoji: '☀️', gripMult: 1.0,  visMult: 1.0 },
+  rain:  { name: 'Rain',   emoji: '🌧️', gripMult: 0.75, visMult: 0.85 },
+  fog:   { name: 'Fog',    emoji: '🌫️', gripMult: 0.95, visMult: 0.55 },
+  night: { name: 'Night',  emoji: '🌙', gripMult: 0.9,  visMult: 0.7 },
+};
+
+// Tire compound
+type TireCompound = 'soft' | 'medium' | 'hard';
+const TIRE_COMPOUNDS: Record<TireCompound, { name: string; emoji: string; grip: number; heat: number; wear: number; desc: string }> = {
+  soft:   { name: 'Soft',   emoji: '🔴', grip: 1.20, heat: 1.30, wear: 1.6, desc: 'Faster + more grip · wears quickly' },
+  medium: { name: 'Medium', emoji: '🟡', grip: 1.00, heat: 1.00, wear: 1.0, desc: 'Balanced choice · default' },
+  hard:   { name: 'Hard',   emoji: '⚪', grip: 0.85, heat: 0.75, wear: 0.5, desc: 'Slower but durable · cool running' },
+};
+
+// Particle system (used for sparks / smoke / dust)
+type Particle = {
+  x: number; y: number; vx: number; vy: number; life: number; maxLife: number;
+  color: string; size: number; gravity?: number; kind?: 'spark' | 'smoke' | 'dust' | 'rain';
+};
+
+// Damage state per system
+type Damage = {
+  engine: number;   // 0 (perfect) → 1 (broken)
+  brakes: number;
+  tires: number;    // tire wear
+};
+const ZERO_DAMAGE: Damage = { engine: 0, brakes: 0, tires: 0 };
+
+// Player car palette
+const CAR_COLORS = [
+  { id: 'rose',   name: 'Rose',   body: '#e11d48', roof: '#f43f5e', glow: '#f43f5e' },
+  { id: 'azure',  name: 'Azure',  body: '#2563eb', roof: '#3b82f6', glow: '#60a5fa' },
+  { id: 'lime',   name: 'Lime',   body: '#16a34a', roof: '#22c55e', glow: '#4ade80' },
+  { id: 'amber',  name: 'Amber',  body: '#d97706', roof: '#f59e0b', glow: '#fbbf24' },
+  { id: 'violet', name: 'Violet', body: '#7c3aed', roof: '#8b5cf6', glow: '#a78bfa' },
+  { id: 'noir',   name: 'Noir',   body: '#171717', roof: '#262626', glow: '#a3a3a3' },
+];
+
 // Audio System — multi-oscillator engine + richer SFX
 class SoundManager {
   private ctx: AudioContext | null = null;
@@ -448,6 +509,138 @@ export default function App() {
   }, [tuning]);
   const tuningRef = useRef(tuning);
   useEffect(() => { tuningRef.current = tuning; }, [tuning]);
+
+  // ── New persistent settings ───────────────────────────────────────────────
+  const [trackTheme, setTrackTheme] = useState<TrackTheme>(() => (localStorage.getItem('gear_race_track') as TrackTheme) || 'highway');
+  useEffect(() => { localStorage.setItem('gear_race_track', trackTheme); }, [trackTheme]);
+  const trackThemeRef = useRef(trackTheme);
+  useEffect(() => { trackThemeRef.current = trackTheme; }, [trackTheme]);
+
+  const [weather, setWeather] = useState<Weather>(() => (localStorage.getItem('gear_race_weather') as Weather) || 'clear');
+  useEffect(() => { localStorage.setItem('gear_race_weather', weather); }, [weather]);
+  const weatherRef = useRef(weather);
+  useEffect(() => { weatherRef.current = weather; }, [weather]);
+
+  const [tireCompound, setTireCompound] = useState<TireCompound>(() => (localStorage.getItem('gear_race_tire') as TireCompound) || 'medium');
+  useEffect(() => { localStorage.setItem('gear_race_tire', tireCompound); }, [tireCompound]);
+  const tireCompoundRef = useRef(tireCompound);
+  useEffect(() => { tireCompoundRef.current = tireCompound; }, [tireCompound]);
+
+  const [carColorId, setCarColorId] = useState<string>(() => localStorage.getItem('gear_race_carcolor') || 'rose');
+  useEffect(() => { localStorage.setItem('gear_race_carcolor', carColorId); }, [carColorId]);
+  const carColorIdRef = useRef(carColorId);
+  useEffect(() => { carColorIdRef.current = carColorId; }, [carColorId]);
+
+  const [practiceMode, setPracticeMode] = useState<boolean>(() => localStorage.getItem('gear_race_practice') === '1');
+  useEffect(() => { localStorage.setItem('gear_race_practice', practiceMode ? '1' : '0'); }, [practiceMode]);
+  const practiceModeRef = useRef(practiceMode);
+  useEffect(() => { practiceModeRef.current = practiceMode; }, [practiceMode]);
+
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => localStorage.getItem('gear_race_voice') !== '0');
+  useEffect(() => { localStorage.setItem('gear_race_voice', voiceEnabled ? '1' : '0'); }, [voiceEnabled]);
+
+  // Damage (cumulative across crashes during a race). Persists between races
+  // unless repaired in garage (cost: credits).
+  const [damage, setDamage] = useState<Damage>(() => {
+    try { const raw = localStorage.getItem('gear_race_damage'); if (raw) return { ...ZERO_DAMAGE, ...JSON.parse(raw) }; } catch {}
+    return { ...ZERO_DAMAGE };
+  });
+  useEffect(() => { localStorage.setItem('gear_race_damage', JSON.stringify(damage)); }, [damage]);
+  const damageRef = useRef(damage);
+  useEffect(() => { damageRef.current = damage; }, [damage]);
+
+  // Tuning presets (3 slots)
+  type TuningPreset = { name: string; tuning: Tuning; gearbox: number[]; tire: TireCompound };
+  const [tuningPresets, setTuningPresets] = useState<(TuningPreset | null)[]>(() => {
+    try {
+      const raw = localStorage.getItem('gear_race_tuning_presets');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [null, null, null];
+  });
+  useEffect(() => { localStorage.setItem('gear_race_tuning_presets', JSON.stringify(tuningPresets)); }, [tuningPresets]);
+
+  // Particles (mutable ref, updated every frame)
+  const particlesRef = useRef<Particle[]>([]);
+
+  // Per-race telemetry (resets on race start)
+  type RaceStats = {
+    startTime: number;
+    endTime: number;
+    distanceCovered: number;
+    topSpeed: number;
+    speedSamples: number[];
+    crashes: number;
+    nearMisses: number;
+    boostsUsed: number;
+    timeInGear: number[]; // 4 entries
+    lastGearChangeTime: number;
+    maxEngineTemp: number;
+    drafts: number;
+  };
+  const raceStatsRef = useRef<RaceStats>({
+    startTime: 0, endTime: 0, distanceCovered: 0, topSpeed: 0, speedSamples: [],
+    crashes: 0, nearMisses: 0, boostsUsed: 0, timeInGear: [0,0,0,0], lastGearChangeTime: 0,
+    maxEngineTemp: 20, drafts: 0,
+  });
+  const [lastRaceStats, setLastRaceStats] = useState<RaceStats | null>(null);
+
+  // Daily challenge — randomized seed-based per local day
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const dailyChallenge = useMemo(() => {
+    // Deterministic per-day pseudo-random (no Math.random, so it stays consistent)
+    let h = 0;
+    for (let i = 0; i < todayKey.length; i++) h = (h * 31 + todayKey.charCodeAt(i)) | 0;
+    const themes: TrackTheme[] = ['highway', 'desert', 'city', 'mountain'];
+    const weathers: Weather[] = ['clear', 'rain', 'fog', 'night'];
+    const tires: TireCompound[] = ['soft', 'medium', 'hard'];
+    return {
+      key: todayKey,
+      theme: themes[Math.abs(h) % 4],
+      weather: weathers[Math.abs(h >> 3) % 4],
+      tire: tires[Math.abs(h >> 6) % 3],
+      goalSec: 90 + (Math.abs(h >> 9) % 60), // 90-150s target
+      reward: 500,
+    };
+  }, [todayKey]);
+  const [dailyDone, setDailyDone] = useState<boolean>(() => localStorage.getItem('gear_race_daily_' + todayKey) === '1');
+
+  // Best ghost run (records ~600 samples of position vs distance)
+  type GhostSample = { d: number; lane: number };
+  const [ghostBest, setGhostBest] = useState<{ time: number; samples: GhostSample[] } | null>(() => {
+    try { const raw = localStorage.getItem('gear_race_ghost'); if (raw) return JSON.parse(raw); } catch {}
+    return null;
+  });
+  useEffect(() => {
+    if (ghostBest) localStorage.setItem('gear_race_ghost', JSON.stringify(ghostBest));
+  }, [ghostBest]);
+  const ghostBestRef = useRef(ghostBest);
+  useEffect(() => { ghostBestRef.current = ghostBest; }, [ghostBest]);
+  const ghostRecordingRef = useRef<GhostSample[]>([]);
+
+  // Police chase — spawns when speed sustained > threshold
+  type Police = { z: number; lane: number; siren: number };
+  const policeRef = useRef<Police | null>(null);
+  const policeCooldownRef = useRef(0);
+
+  // Drafting tracker
+  const draftTimerRef = useRef(0);
+
+  // Speech synthesizer for commentary (browser API, no external dependency)
+  const speak = (text: string) => {
+    if (!voiceEnabled) return;
+    if (!('speechSynthesis' in window)) return;
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.15;
+      u.pitch = 0.9;
+      u.volume = 0.6;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
+  const speakRef = useRef(speak);
+  useEffect(() => { speakRef.current = speak; }, [voiceEnabled]);
   const [currentSlope, setCurrentSlope] = useState(0); // radians, for HUD
 
   // Reset transmission to 2nd gear at the start of every race
@@ -467,7 +660,7 @@ export default function App() {
   const lastLaneChangeZRef = useRef(0);
   const nextObstacleZRef = useRef(0);
   const nearMissTextRef = useRef<{text: string, x: number, y: number, opacity: number} | null>(null);
-  const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string, processed?: boolean }[]>([]);
+  const [obstacles, setObstacles] = useState<{ id: string, lane: number, z: number, type: string, processed?: boolean, vx?: number, targetLane?: number }[]>([]);
 
   useEffect(() => {
     if (targetLane !== targetLaneRef.current) {
@@ -716,7 +909,6 @@ export default function App() {
   const playerBodyRef = useRef<Matter.Body | null>(null);
   const wheelARef = useRef<Matter.Body | null>(null);
   const wheelBRef = useRef<Matter.Body | null>(null);
-  const particlesRef = useRef<{ x: number, y: number, vx: number, vy: number, life: number, color: string }[]>([]);
   
   const controlsRef = useRef({
     isAccelerating: false,
@@ -1041,12 +1233,33 @@ export default function App() {
   useEffect(() => {
     if (gameState !== 'racing') return;
 
+    // ── Reset per-race state at race start ────────────────────────────
+    raceStatsRef.current = {
+      startTime: performance.now(),
+      endTime: 0,
+      distanceCovered: 0,
+      topSpeed: 0,
+      speedSamples: [],
+      crashes: 0,
+      nearMisses: 0,
+      boostsUsed: 0,
+      timeInGear: [0,0,0,0],
+      lastGearChangeTime: 0,
+      maxEngineTemp: 20,
+      drafts: 0,
+    };
+    particlesRef.current = [];
+    policeRef.current = null;
+    policeCooldownRef.current = 0;
+    draftTimerRef.current = 0;
+    ghostRecordingRef.current = [];
+
     let animFrame: number;
     let lastTime = performance.now();
     let localDistance = distance;
     let localSpeed = currentSpeed;
     let localPlayerLane = playerLane;
-    let localObstacles: { id: string, lane: number, z: number, type: string, processed?: boolean, oldLane?: number }[] = [];
+    let localObstacles: { id: string, lane: number, z: number, type: string, processed?: boolean, oldLane?: number, vx?: number, targetLane?: number }[] = [];
     let localEngineTemp = engineTemp;
     let screenShake = 0;
     let localBoostTimer = 0;
@@ -1101,10 +1314,22 @@ export default function App() {
       const drag = 0.5; // Air resistance
       const friction = 20; // Ground friction
 
+      // ── New: pull live values for tires / weather / damage ─────────────
+      const tireSpec = TIRE_COMPOUNDS[tireCompoundRef.current];
+      const wx = WEATHER_OPTS[weatherRef.current];
+      const dmg = damageRef.current;
+      // Engine damage caps top speed and acceleration
+      const engineHealth = 1 - dmg.engine * 0.45; // up to -45% top speed
+      const brakeHealth  = 1 - dmg.brakes * 0.50; // up to -50% brake power
+      // Tire wear erodes grip
+      const tireGripScale = (1 - dmg.tires * 0.40) * tireSpec.grip * wx.gripMult;
+
       // Brake power scales with brake tuning (level 1 = 70%, level 5 = 130%).
-      const brakePower = 600 * (1 + (tn.brakes - 3) * 0.15);
+      const brakePower = 600 * (1 + (tn.brakes - 3) * 0.15) * brakeHealth;
+      const adjAcceleration = acceleration * engineHealth;
+      const adjTopSpeed = topSpeed * engineHealth;
       if (activeAcceleration) {
-        localSpeed = Math.min(topSpeed, localSpeed + acceleration * dt);
+        localSpeed = Math.min(adjTopSpeed, localSpeed + adjAcceleration * dt);
       } else if (brake) {
         localSpeed = Math.max(0, localSpeed - brakePower * dt);
       } else {
@@ -1172,6 +1397,38 @@ export default function App() {
 
       if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
+
+        // Finalize per-race telemetry
+        const rsFinal = raceStatsRef.current;
+        rsFinal.endTime = performance.now();
+        rsFinal.distanceCovered = localDistance;
+        setLastRaceStats({ ...rsFinal });
+        const elapsedSec = (rsFinal.endTime - rsFinal.startTime) / 1000;
+        speakRef.current('Race complete!');
+
+        // Save best ghost (single-player only — track is shared geometry)
+        if (gameMode === 'single' && ghostRecordingRef.current.length > 4) {
+          const cur = ghostBestRef.current;
+          if (!cur || elapsedSec < cur.time) {
+            const samples: GhostSample[] = ghostRecordingRef.current.slice();
+            setGhostBest({ time: elapsedSec, samples });
+            speakRef.current('New record!');
+          }
+        }
+
+        // Daily challenge: did we satisfy it today?
+        if (
+          !dailyDone
+          && trackThemeRef.current === dailyChallenge.theme
+          && weatherRef.current === dailyChallenge.weather
+          && tireCompoundRef.current === dailyChallenge.tire
+          && elapsedSec <= dailyChallenge.goalSec
+        ) {
+          addCredits(dailyChallenge.reward);
+          localStorage.setItem('gear_race_daily_' + todayKey, '1');
+          setDailyDone(true);
+          speakRef.current('Daily challenge complete!');
+        }
         
         // Rewards and Missions
         const reward = gameMode === 'multi' ? 300 : 100;
@@ -1190,42 +1447,210 @@ export default function App() {
         return;
       }
 
-      // Obstacle generation (Distance-based for better spacing)
-      if (localDistance > nextObstacleZRef.current) {
+      // ── Obstacle generation (extended types) ──────────────────────────
+      // Practice mode: spawn far fewer hazards so the player can focus on driving.
+      if (!practiceModeRef.current && localDistance > nextObstacleZRef.current) {
         const r = Math.random();
-        const type = r < 0.30 ? 'truck'
-                   : r < 0.55 ? 'car'
-                   : r < 0.78 ? 'van'
-                   : r < 0.92 ? 'bike'
-                   : 'bus';
+        // Extended distribution: vehicles 60%, hazards 40%.
+        // Vehicles: truck/car/van/bike/bus
+        // Hazards: pothole (static), oil_slick (static), ramp (static)
+        const type = r < 0.18 ? 'truck'
+                   : r < 0.34 ? 'car'
+                   : r < 0.46 ? 'van'
+                   : r < 0.54 ? 'bike'
+                   : r < 0.60 ? 'bus'
+                   : r < 0.74 ? 'pothole'
+                   : r < 0.88 ? 'oil_slick'
+                   : 'ramp';
+        const lane = Math.floor(Math.random() * 3) - 1;
+        // Some vehicles drift between lanes — moving obstacles!
+        const isMoving = (type === 'car' || type === 'van' || type === 'bike') && Math.random() < 0.35;
         localObstacles.push({
-          id: Math.random().toString(36).substr(2, 9),
-          lane: Math.floor(Math.random() * 3) - 1,
+          id: Math.random().toString(36).slice(2, 11),
+          lane,
           z: localDistance + 2500,
-          type
+          type,
+          vx: isMoving ? (Math.random() < 0.5 ? -0.35 : 0.35) : 0,
+          targetLane: isMoving ? (lane === 1 ? 0 : lane === -1 ? 0 : (Math.random() < 0.5 ? 1 : -1)) : lane,
         });
-        nextObstacleZRef.current = localDistance + 400 + Math.random() * 600;
+        // Practice mode would have ducked above, but if disabled spacing tightens slightly with theme.
+        const themeMult = trackThemeRef.current === 'city' ? 0.85 : 1;
+        nextObstacleZRef.current = localDistance + (400 + Math.random() * 600) * themeMult;
       }
 
-      // Filter and collision
-      localObstacles = localObstacles.filter(obs => {
-        const relativeZ = obs.z - localDistance;
-        
-        // Collision detection
-        if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLaneRef.current) < 0.5) {
-          // Better tires soften the crash (less heat, less speed lost).
-          const grip = 1 + (tn.tires - 3) * 0.15;
-          localEngineTemp += 15 / grip;
-          localSpeed *= Math.min(0.7, 0.4 * grip); // less speed lost with better tires
-          screenShake = 20; // Trigger screen shake
-          localBoostTimer = 0; // Cancel boost on hit
+      // ── Police chase ──────────────────────────────────────────────────
+      // After 12s of consistent high speed, a police unit spawns behind & chases.
+      if (!practiceModeRef.current && policeRef.current === null && policeCooldownRef.current <= 0) {
+        if (localSpeed > adjTopSpeed * 0.78) {
+          policeCooldownRef.current = (policeCooldownRef.current || 0) + dt;
+        }
+        // Use a hidden accumulator on the ref via a numeric trick: store negative as accumulator
+        // (simpler: just spawn with low probability while at top speed)
+        if (localSpeed > adjTopSpeed * 0.85 && Math.random() < dt * 0.04) {
+          policeRef.current = { z: localDistance - 800, lane: 0, siren: 0 };
+          speakRef.current('Police on your tail!');
+        }
+      }
+      if (policeRef.current) {
+        const p = policeRef.current;
+        // Police speed: matches yours + small bonus, but if very far behind catches up faster.
+        const gap = localDistance - p.z;
+        const policeSpeed = localSpeed + (gap > 600 ? 80 : 20) - (Math.random() * 10);
+        p.z += policeSpeed * dt;
+        p.siren += dt;
+        // Lane tracking: try to match player's lane gradually.
+        const laneErr = localPlayerLane - p.lane;
+        p.lane += Math.sign(laneErr) * Math.min(Math.abs(laneErr), 0.7 * dt);
+        // If they overtake you while in the same lane → bust (small explosion / heavy damage).
+        if (p.z > localDistance - 60 && Math.abs(p.lane - localPlayerLane) < 0.5) {
+          // Major hit
+          localSpeed *= 0.3;
+          localEngineTemp += 25;
+          screenShake = 28;
+          setDamage(d => ({ ...d, engine: Math.min(1, d.engine + 0.15), brakes: Math.min(1, d.brakes + 0.10) }));
+          policeRef.current = null;
+          policeCooldownRef.current = 12; // 12s before another can spawn
           sounds.playCrash();
           audioBus.playSfx('crash');
+          speakRef.current('Busted!');
+          for (let i = 0; i < 30; i++) {
+            particlesRef.current.push({
+              x: (Math.random() - 0.5) * 200, y: -50 - Math.random() * 100,
+              vx: (Math.random() - 0.5) * 400, vy: -100 - Math.random() * 200,
+              life: 1.2, maxLife: 1.2, color: i % 2 ? '#3b82f6' : '#ef4444',
+              size: 3 + Math.random() * 4, gravity: 600, kind: 'spark',
+            });
+          }
+          raceStatsRef.current.crashes += 1;
+        }
+        // Despawn if very far behind
+        if (gap > 2500) policeRef.current = null;
+      }
+      if (policeCooldownRef.current > 0) policeCooldownRef.current = Math.max(0, policeCooldownRef.current - dt);
+
+      // Filter and collision
+      let nearestAheadGap = Infinity; let nearestAheadLane = 99;
+      localObstacles = localObstacles.filter(obs => {
+        // Move dynamic obstacles
+        if (obs.vx && obs.targetLane !== undefined && obs.targetLane !== obs.lane) {
+          const step = obs.vx * dt;
+          if (Math.abs(obs.targetLane - obs.lane) < Math.abs(step)) {
+            obs.lane = obs.targetLane;
+            // Pick a new target every now and then
+            if (Math.random() < 0.4) {
+              obs.targetLane = Math.floor(Math.random() * 3) - 1;
+              obs.vx = obs.targetLane > obs.lane ? Math.abs(obs.vx!) : -Math.abs(obs.vx!);
+            }
+          } else {
+            obs.lane += step;
+          }
+        }
+
+        const relativeZ = obs.z - localDistance;
+
+        // Track nearest vehicle ahead in our lane (used for drafting)
+        if (relativeZ > 80 && relativeZ < 600 && Math.abs(obs.lane - localPlayerLane) < 0.4) {
+          if (['truck','car','van','bike','bus'].includes(obs.type) && relativeZ < nearestAheadGap) {
+            nearestAheadGap = relativeZ;
+            nearestAheadLane = obs.lane;
+          }
+        }
+
+        // Collision detection
+        if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLaneRef.current) < 0.5) {
+          if (obs.type === 'oil_slick') {
+            // Oil: don't lose speed but lose grip — sharp lateral wobble + tire wear
+            screenShake = 8;
+            setDamage(d => ({ ...d, tires: Math.min(1, d.tires + 0.05) }));
+            const wobble = (Math.random() < 0.5 ? -1 : 1) * 0.6;
+            setTargetLane(prev => Math.max(-1, Math.min(1, prev + wobble)));
+            audioBus.playSfx('crash');
+            // Smoke particles
+            for (let i = 0; i < 14; i++) {
+              particlesRef.current.push({
+                x: (Math.random() - 0.5) * 80, y: -20 - Math.random() * 20,
+                vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 40,
+                life: 1.2, maxLife: 1.2, color: '#1f2937',
+                size: 6 + Math.random() * 8, gravity: 0, kind: 'smoke',
+              });
+            }
+            return false;
+          }
+          if (obs.type === 'pothole') {
+            // Pothole: heavy speed loss + tire damage + brake damage
+            const grip = 1 + (tn.tires - 3) * 0.15;
+            localSpeed *= 0.55;
+            screenShake = 18;
+            setDamage(d => ({
+              ...d,
+              tires: Math.min(1, d.tires + 0.10 / grip),
+              brakes: Math.min(1, d.brakes + 0.05),
+            }));
+            sounds.playCrash();
+            audioBus.playSfx('crash');
+            // Spark + smoke burst
+            for (let i = 0; i < 18; i++) {
+              particlesRef.current.push({
+                x: (Math.random() - 0.5) * 60, y: -10 - Math.random() * 30,
+                vx: (Math.random() - 0.5) * 250, vy: -100 - Math.random() * 200,
+                life: 0.9, maxLife: 0.9, color: i % 2 ? '#fbbf24' : '#9ca3af',
+                size: 2 + Math.random() * 3, gravity: 800, kind: 'spark',
+              });
+            }
+            raceStatsRef.current.crashes += 1;
+            return false;
+          }
+          if (obs.type === 'ramp') {
+            // Ramp: launch! Big speed boost, no damage, high score moment
+            localBoostTimer = Math.max(localBoostTimer, 2.5);
+            setBoostTime(localBoostTimer);
+            setLastBoostType('RAMP JUMP');
+            screenShake = 14;
+            localSpeed = Math.min(adjTopSpeed * 1.2, localSpeed * 1.15 + 80);
+            audioBus.playSfx('boost');
+            speakRef.current('Big air!');
+            for (let i = 0; i < 22; i++) {
+              particlesRef.current.push({
+                x: (Math.random() - 0.5) * 100, y: -30 - Math.random() * 60,
+                vx: (Math.random() - 0.5) * 200, vy: -250 - Math.random() * 150,
+                life: 1.4, maxLife: 1.4, color: '#fbbf24',
+                size: 3 + Math.random() * 4, gravity: 500, kind: 'spark',
+              });
+            }
+            return false;
+          }
+          // Default vehicle collision (truck/car/van/bike/bus)
+          // Better tires soften the crash. Worse weather amplifies it.
+          const grip = 1 + (tn.tires - 3) * 0.15;
+          const wxPenalty = 1 / wx.gripMult;
+          localEngineTemp += (15 / grip) * wxPenalty;
+          localSpeed *= Math.min(0.7, 0.4 * grip); // less speed lost with better tires
+          screenShake = 22; // Trigger screen shake
+          localBoostTimer = 0; // Cancel boost on hit
+          // Cumulative damage
+          setDamage(d => ({
+            engine: Math.min(1, d.engine + 0.10 * wxPenalty),
+            brakes: Math.min(1, d.brakes + 0.06),
+            tires:  Math.min(1, d.tires  + 0.08 / grip),
+          }));
+          raceStatsRef.current.crashes += 1;
+          sounds.playCrash();
+          audioBus.playSfx('crash');
+          // Spark burst on impact
+          for (let i = 0; i < 24; i++) {
+            particlesRef.current.push({
+              x: (Math.random() - 0.5) * 80, y: -30 - Math.random() * 40,
+              vx: (Math.random() - 0.5) * 350, vy: -200 - Math.random() * 250,
+              life: 1, maxLife: 1, color: i % 3 ? '#fbbf24' : '#ef4444',
+              size: 2 + Math.random() * 3, gravity: 700, kind: 'spark',
+            });
+          }
+          if (raceStatsRef.current.crashes === 1) speakRef.current('Watch out!');
           return false;
         }
 
         // Near Miss Detection (Trigger when approaching closely)
-        if (relativeZ > 0 && relativeZ < 150 && !obs.processed) {
+        if (relativeZ > 0 && relativeZ < 150 && !obs.processed && !['pothole','oil_slick','ramp'].includes(obs.type)) {
           const lateralDist = Math.abs(localPlayerLane - obs.lane);
           const zDistSinceChange = localDistance - lastLaneChangeZRef.current;
           
@@ -1249,6 +1674,8 @@ export default function App() {
               nearMissTextRef.current = { text: msg, x: 0, y: 0, opacity: 1 };
               sounds.playBoost();
               audioBus.playSfx('boost');
+              raceStatsRef.current.nearMisses += 1;
+              raceStatsRef.current.boostsUsed += 1;
             }
           }
         }
@@ -1256,6 +1683,64 @@ export default function App() {
         return relativeZ > -100;
       });
       setObstacles([...localObstacles]);
+
+      // ── Drafting ────────────────────────────────────────────────────────
+      // If you spend > 1s tucked behind a vehicle in the same lane (gap 80–250),
+      // earn a small slingshot speed bonus.
+      void nearestAheadLane; // (kept for clarity / future targeting)
+      if (nearestAheadGap < 250 && nearestAheadGap > 80) {
+        draftTimerRef.current += dt;
+        if (draftTimerRef.current > 1.0) {
+          // Sustained draft: small continuous top-speed bonus + small heat shed
+          localSpeed = Math.min(adjTopSpeed * 1.05, localSpeed + 35 * dt);
+          localEngineTemp = Math.max(20, localEngineTemp - 2 * dt);
+        }
+        if (draftTimerRef.current > 2.0 && !((draftTimerRef.current * 10) | 0 % 30)) {
+          // periodic micro-particle as visual hint
+          particlesRef.current.push({
+            x: (Math.random() - 0.5) * 30, y: -10 - Math.random() * 10,
+            vx: (Math.random() - 0.5) * 30, vy: -20,
+            life: 0.4, maxLife: 0.4, color: '#7dd3fc',
+            size: 2, gravity: 0, kind: 'smoke',
+          });
+        }
+      } else {
+        if (draftTimerRef.current > 1.0) raceStatsRef.current.drafts += 1;
+        draftTimerRef.current = 0;
+      }
+
+      // ── Tire wear over time (faster with soft compound, harder driving) ─
+      const wearRate = tireSpec.wear * (activeAcceleration ? 0.0007 : 0.0002) * (1 + Math.abs(diff) * 0.5);
+      if (Math.random() < 0.5) setDamage(d => ({ ...d, tires: Math.min(1, d.tires + wearRate * dt) }));
+
+      // ── Particles update ────────────────────────────────────────────────
+      const ps = particlesRef.current;
+      for (let i = ps.length - 1; i >= 0; i--) {
+        const p = ps[i];
+        p.life -= dt;
+        if (p.life <= 0) { ps.splice(i, 1); continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        if (p.gravity) p.vy += p.gravity * dt;
+        if (p.kind === 'smoke') { p.vy -= 30 * dt; p.size += 8 * dt; }
+      }
+      // Cap pool size (defensive)
+      if (ps.length > 400) ps.splice(0, ps.length - 400);
+
+      // ── Telemetry ───────────────────────────────────────────────────────
+      const rs = raceStatsRef.current;
+      if (rs.startTime === 0) rs.startTime = performance.now();
+      rs.distanceCovered = localDistance;
+      if (localSpeed > rs.topSpeed) rs.topSpeed = localSpeed;
+      if (localEngineTemp > rs.maxEngineTemp) rs.maxEngineTemp = localEngineTemp;
+      if (Math.random() < 0.05) rs.speedSamples.push(localSpeed);
+      rs.timeInGear[currentGearRef.current] = (rs.timeInGear[currentGearRef.current] || 0) + dt;
+
+      // ── Ghost recording (every ~50m) ────────────────────────────────────
+      if (gameMode === 'single' && (ghostRecordingRef.current.length === 0 ||
+          localDistance - ghostRecordingRef.current[ghostRecordingRef.current.length - 1].d > 50)) {
+        ghostRecordingRef.current.push({ d: localDistance, lane: localPlayerLane });
+      }
 
       // Rendering
       const w = canvasSize.width;
@@ -1304,55 +1789,108 @@ export default function App() {
 
       ctx.clearRect(0, 0, w, h);
 
-      // Sky Gradient
+      // ── Theme-aware sky / horizon ──────────────────────────────────────
+      const theme = TRACK_THEMES[trackThemeRef.current];
+      const wxNow = WEATHER_OPTS[weatherRef.current];
+      const isNight = weatherRef.current === 'night';
+      const isRain = weatherRef.current === 'rain';
+      const isFog = weatherRef.current === 'fog';
       const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
-      skyGrad.addColorStop(0, '#1e3a8a'); // Deep blue
-      skyGrad.addColorStop(1, '#60a5fa'); // Sky blue
+      const topCol = isNight ? '#020617' : isRain ? '#334155' : isFog ? '#475569' : theme.skyTop;
+      const botCol = isNight ? '#1e1b4b' : isRain ? '#64748b' : isFog ? '#94a3b8' : theme.skyBottom;
+      skyGrad.addColorStop(0, topCol);
+      skyGrad.addColorStop(1, botCol);
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, w, horizon);
 
-      // Simple Sun
-      ctx.fillStyle = '#fef08a';
-      ctx.shadowBlur = 40;
-      ctx.shadowColor = '#facc15';
-      ctx.beginPath();
-      ctx.arc(w * 0.8, h * 0.15, 30, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // Simple Clouds
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      const drawCloud = (cx: number, cy: number, size: number) => {
+      // Sun / Moon
+      if (isNight) {
+        // Moon
+        ctx.fillStyle = '#f8fafc';
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = '#cbd5e1';
         ctx.beginPath();
-        ctx.arc(cx, cy, size, 0, Math.PI * 2);
-        ctx.arc(cx + size * 0.6, cy - size * 0.2, size * 0.8, 0, Math.PI * 2);
-        ctx.arc(cx + size * 1.2, cy, size * 0.7, 0, Math.PI * 2);
+        ctx.arc(w * 0.78, h * 0.12, 24, 0, Math.PI * 2);
         ctx.fill();
-      };
-      drawCloud(w * 0.2, h * 0.1, 20);
-      drawCloud(w * 0.5, h * 0.05, 15);
-      drawCloud(w * 0.7, h * 0.12, 25);
+        ctx.shadowBlur = 0;
+        // Stars
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        for (let i = 0; i < 30; i++) {
+          const sx = (i * 137.5) % w;
+          const sy = ((i * 73.3) % horizon) * 0.7;
+          ctx.fillRect(sx, sy, 1.5, 1.5);
+        }
+      } else if (!isFog && !isRain) {
+        ctx.fillStyle = '#fef08a';
+        ctx.shadowBlur = 40;
+        ctx.shadowColor = '#facc15';
+        ctx.beginPath();
+        ctx.arc(w * 0.8, h * 0.15, 30, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
 
-      // Draw Distant Mountains Silhouette
-      ctx.fillStyle = '#1e293b';
-      ctx.beginPath();
-      ctx.moveTo(0, horizon);
-      ctx.lineTo(w * 0.1, horizon - 20);
-      ctx.lineTo(w * 0.2, horizon - 40);
-      ctx.lineTo(w * 0.3, horizon - 10);
-      ctx.lineTo(w * 0.4, horizon - 30);
-      ctx.lineTo(w * 0.6, horizon - 50);
-      ctx.lineTo(w * 0.8, horizon - 20);
-      ctx.lineTo(w, horizon);
-      ctx.fill();
+      // Clouds (denser on rain/fog)
+      if (!isNight) {
+        ctx.fillStyle = isRain ? 'rgba(30, 41, 59, 0.6)' : isFog ? 'rgba(226,232,240,0.45)' : 'rgba(255, 255, 255, 0.3)';
+        const drawCloud = (cx: number, cy: number, size: number) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, size, 0, Math.PI * 2);
+          ctx.arc(cx + size * 0.6, cy - size * 0.2, size * 0.8, 0, Math.PI * 2);
+          ctx.arc(cx + size * 1.2, cy, size * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+        };
+        drawCloud(w * 0.2, h * 0.1, 20);
+        drawCloud(w * 0.5, h * 0.05, 15);
+        drawCloud(w * 0.7, h * 0.12, 25);
+        if (isRain) {
+          drawCloud(w * 0.35, h * 0.08, 28);
+          drawCloud(w * 0.85, h * 0.06, 22);
+        }
+      }
 
-      // Draw Grass
-      ctx.fillStyle = '#064e3b';
+      // City skyline silhouette for the city theme
+      if (trackThemeRef.current === 'city') {
+        ctx.fillStyle = '#0a0a14';
+        const buildings = 24;
+        for (let i = 0; i < buildings; i++) {
+          const bx = (i / buildings) * w;
+          const bw = w / buildings * 1.05;
+          const bh = 25 + ((i * 41) % 60);
+          ctx.fillRect(bx, horizon - bh, bw, bh);
+          // Lit windows
+          ctx.fillStyle = '#fde047';
+          for (let r = 0; r < bh / 12; r++) {
+            for (let c = 0; c < 3; c++) {
+              if (((i * 3 + r * 7 + c * 11) % 5) === 0) {
+                ctx.fillRect(bx + 3 + c * (bw / 4), horizon - bh + 3 + r * 12, 2, 2);
+              }
+            }
+          }
+          ctx.fillStyle = '#0a0a14';
+        }
+      } else {
+        // Distant mountain silhouette
+        ctx.fillStyle = theme.mountainColor;
+        ctx.beginPath();
+        ctx.moveTo(0, horizon);
+        ctx.lineTo(w * 0.1, horizon - 20);
+        ctx.lineTo(w * 0.2, horizon - 40);
+        ctx.lineTo(w * 0.3, horizon - 10);
+        ctx.lineTo(w * 0.4, horizon - 30);
+        ctx.lineTo(w * 0.6, horizon - 50);
+        ctx.lineTo(w * 0.8, horizon - 20);
+        ctx.lineTo(w, horizon);
+        ctx.fill();
+      }
+
+      // Ground (grass / sand / snow)
+      ctx.fillStyle = theme.ground;
       ctx.fillRect(0, horizon, w, h - horizon);
 
       // Draw Road as N vertical strips, each bent by slope ahead → road climbs/dips visually.
       const ROAD_STRIPS = 36;
-      ctx.fillStyle = '#1a1a1a';
+      ctx.fillStyle = isRain ? '#0f0f1a' : theme.roadColor;
       for (let i = 0; i < ROAD_STRIPS; i++) {
         const s1 = i / ROAD_STRIPS;
         const s2 = (i + 1) / ROAD_STRIPS;
@@ -1632,6 +2170,61 @@ export default function App() {
           ctx.roundRect(x - carW/2 + 2 * scale, y - size * 0.09, size * 0.18, size * 0.09, 3 * scale);
           ctx.roundRect(x + carW/2 - 2 * scale - size * 0.18, y - size * 0.09, size * 0.18, size * 0.09, 3 * scale);
           ctx.fill();
+        } else if (obs.type === 'pothole') {
+          // Dark elliptical hole on the road
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.ellipse(x, y - size * 0.04, size * 0.55, size * 0.18, 0, 0, Math.PI * 2);
+          ctx.fill();
+          // Inner darker ring
+          ctx.fillStyle = '#0a0a0a';
+          ctx.beginPath();
+          ctx.ellipse(x, y - size * 0.04, size * 0.42, size * 0.13, 0, 0, Math.PI * 2);
+          ctx.fill();
+          // Cracked edge highlight
+          ctx.strokeStyle = 'rgba(180,180,180,0.35)';
+          ctx.lineWidth = Math.max(1, 1.4 * scale);
+          ctx.beginPath();
+          ctx.ellipse(x, y - size * 0.04, size * 0.55, size * 0.18, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (obs.type === 'oil_slick') {
+          // Iridescent dark blob
+          const oGrad = ctx.createRadialGradient(x, y - size * 0.05, 2, x, y - size * 0.05, size * 0.55);
+          oGrad.addColorStop(0, '#7c3aed');
+          oGrad.addColorStop(0.4, '#1e1b4b');
+          oGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = oGrad;
+          ctx.beginPath();
+          ctx.ellipse(x, y - size * 0.05, size * 0.6, size * 0.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          // Glossy reflection
+          ctx.fillStyle = 'rgba(167, 139, 250, 0.5)';
+          ctx.beginPath();
+          ctx.ellipse(x - size * 0.15, y - size * 0.08, size * 0.18, size * 0.05, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (obs.type === 'ramp') {
+          // Yellow / black wedge ramp
+          const rampW = size * 1.0;
+          const rampH = size * 0.55;
+          const grad = ctx.createLinearGradient(x, y - rampH, x, y);
+          grad.addColorStop(0, '#fbbf24');
+          grad.addColorStop(1, '#b45309');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.moveTo(x - rampW/2, y);
+          ctx.lineTo(x + rampW/2, y);
+          ctx.lineTo(x + rampW * 0.35, y - rampH);
+          ctx.lineTo(x - rampW * 0.35, y - rampH);
+          ctx.closePath();
+          ctx.fill();
+          // Hazard stripes
+          ctx.fillStyle = '#0f172a';
+          for (let s2 = 0; s2 < 4; s2++) {
+            ctx.fillRect(x - rampW/2 + (rampW/4) * s2 + 4 * scale, y - 4 * scale, rampW/8, 4 * scale);
+          }
+          // Top edge
+          ctx.fillStyle = '#fde68a';
+          ctx.fillRect(x - rampW * 0.35, y - rampH - 2 * scale, rampW * 0.7, 2 * scale);
         } else {
           // Bike (Rear View) — refined
           const bikeW = size * 0.5;
@@ -1710,8 +2303,105 @@ export default function App() {
         ctx.restore();
       });
 
-      // Draw Player Car (Improved 3D-ish model and positioning)
-      const carScale = 0.5; // Even smaller for better perspective
+      // ── Ghost replay (single-player only, when a best run exists) ─────
+      if (gameMode === 'single' && ghostBestRef.current && ghostBestRef.current.samples.length > 0) {
+        const samples = ghostBestRef.current.samples;
+        // Find ghost's current lane via interpolation by distance.
+        // Ghost moves on a virtual time-based pace = bestTime / TRACK_LENGTH.
+        const elapsed = (performance.now() - raceStatsRef.current.startTime) / 1000;
+        const ghostD = (elapsed / Math.max(1, ghostBestRef.current.time)) * TRACK_LENGTH;
+        // Find the two surrounding samples
+        let lo = 0, hi = samples.length - 1;
+        while (lo < hi - 1) {
+          const mid = (lo + hi) >> 1;
+          if (samples[mid].d < ghostD) lo = mid; else hi = mid;
+        }
+        const a = samples[lo], b = samples[hi] || a;
+        const t = (ghostD - a.d) / Math.max(1, (b.d - a.d));
+        const gLane = a.lane + (b.lane - a.lane) * Math.max(0, Math.min(1, t));
+        const relZ = ghostD - localDistance;
+        if (relZ > -300 && relZ < 4000) {
+          const gScale = 800 / (relZ + 800);
+          const gx = getX(gLane, gScale);
+          const gy = yAt(gScale);
+          ctx.save();
+          ctx.globalAlpha = 0.45;
+          ctx.shadowBlur = 18;
+          ctx.shadowColor = '#a78bfa';
+          ctx.fillStyle = '#a78bfa';
+          const gSize = 60 * gScale;
+          ctx.beginPath();
+          ctx.roundRect(gx - gSize/2, gy - gSize/2, gSize, gSize/2, 6 * gScale);
+          ctx.fill();
+          ctx.fillStyle = '#ddd6fe';
+          ctx.font = `bold ${Math.max(8, 12 * gScale)}px Inter`;
+          ctx.textAlign = 'center';
+          ctx.fillText('GHOST', gx, gy - gSize/2 - 4);
+          ctx.restore();
+        }
+      }
+
+      // ── Police chase rendering ────────────────────────────────────────
+      if (policeRef.current) {
+        const p = policeRef.current;
+        const relZ = p.z - localDistance;
+        if (relZ > -200 && relZ < 4000) {
+          const scale = 800 / (relZ + 800);
+          const x = getX(p.lane, scale);
+          const y = yAt(scale);
+          const size = 78 * scale;
+          // Shadow
+          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+          ctx.beginPath(); ctx.ellipse(x, y + size * 0.04, size * 0.55, size * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+          // Body — black-and-white
+          const carW = size * 0.95;
+          const carH = size * 0.75;
+          const grad = ctx.createLinearGradient(x, y - carH, x, y);
+          grad.addColorStop(0, '#171717');
+          grad.addColorStop(0.5, '#f8fafc');
+          grad.addColorStop(1, '#171717');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(x - carW/2, y - carH * 0.55, carW, carH * 0.45, 5 * scale);
+          ctx.fill();
+          // Roof
+          ctx.fillStyle = '#171717';
+          ctx.beginPath();
+          ctx.moveTo(x - carW * 0.32, y - carH * 0.55);
+          ctx.lineTo(x - carW * 0.26, y - carH);
+          ctx.lineTo(x + carW * 0.26, y - carH);
+          ctx.lineTo(x + carW * 0.32, y - carH * 0.55);
+          ctx.closePath();
+          ctx.fill();
+          // Sirens — alternating red / blue based on siren timer
+          const flash = Math.floor(p.siren * 10) % 2;
+          ctx.shadowBlur = 22 * scale;
+          ctx.fillStyle = flash ? '#ef4444' : '#3b82f6';
+          ctx.shadowColor = flash ? '#ef4444' : '#3b82f6';
+          ctx.fillRect(x - size * 0.18, y - carH - 4 * scale, size * 0.16, size * 0.06);
+          ctx.fillStyle = flash ? '#3b82f6' : '#ef4444';
+          ctx.shadowColor = flash ? '#3b82f6' : '#ef4444';
+          ctx.fillRect(x + size * 0.02, y - carH - 4 * scale, size * 0.16, size * 0.06);
+          ctx.shadowBlur = 0;
+          // Windshield
+          ctx.fillStyle = 'rgba(15,23,42,0.85)';
+          ctx.beginPath();
+          ctx.moveTo(x - carW * 0.28, y - carH * 0.58);
+          ctx.lineTo(x - carW * 0.22, y - carH * 0.95);
+          ctx.lineTo(x + carW * 0.22, y - carH * 0.95);
+          ctx.lineTo(x + carW * 0.28, y - carH * 0.58);
+          ctx.closePath();
+          ctx.fill();
+          // POLICE text
+          ctx.fillStyle = '#0a0a0a';
+          ctx.font = `bold ${Math.max(8, 10 * scale)}px Inter`;
+          ctx.textAlign = 'center';
+          ctx.fillText('POLICE', x, y - carH * 0.30);
+        }
+      }
+
+      // Draw Player Car (Improved 3D-ish model and positioning, customizable color)
+      const playerCol = CAR_COLORS.find(c => c.id === carColorIdRef.current) || CAR_COLORS[0];
       const carX = getX(localPlayerLane, 0.9); // Positioned slightly further up for better view
       const carY = h - 30; 
       
@@ -1722,15 +2412,15 @@ export default function App() {
       ctx.fill();
 
       // Car Body
-      ctx.fillStyle = localBoostTimer > 0 ? '#fbbf24' : '#e11d48';
-      ctx.shadowBlur = localBoostTimer > 0 ? 30 : 0;
-      ctx.shadowColor = '#fbbf24';
+      ctx.fillStyle = localBoostTimer > 0 ? '#fbbf24' : playerCol.body;
+      ctx.shadowBlur = localBoostTimer > 0 ? 30 : (isNight ? 18 : 0);
+      ctx.shadowColor = localBoostTimer > 0 ? '#fbbf24' : playerCol.glow;
       ctx.beginPath();
       ctx.roundRect(carX - 30, carY - 15, 60, 30, 6);
       ctx.fill();
       
       // Car Roof
-      ctx.fillStyle = localBoostTimer > 0 ? '#fef3c7' : '#f43f5e';
+      ctx.fillStyle = localBoostTimer > 0 ? '#fef3c7' : playerCol.roof;
       ctx.beginPath();
       ctx.roundRect(carX - 22, carY - 26, 44, 18, 4);
       ctx.fill();
@@ -1738,6 +2428,13 @@ export default function App() {
       // Windows
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(carX - 18, carY - 24, 36, 11);
+
+      // Tire wear visual: when tires are worn, show a faint yellow rim
+      if (damageRef.current.tires > 0.5) {
+        ctx.strokeStyle = `rgba(250,204,21,${(damageRef.current.tires - 0.5) * 1.5})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(carX - 30, carY - 15, 60, 30, 6); ctx.stroke();
+      }
       
       // Tail Lights
       ctx.fillStyle = isBraking ? '#ff0000' : '#991b1b';
@@ -1746,6 +2443,89 @@ export default function App() {
       ctx.fillRect(carX - 26, carY - 4, 11, 6);
       ctx.fillRect(carX + 15, carY - 4, 11, 6);
       ctx.shadowBlur = 0;
+
+      // ── Particles render ──────────────────────────────────────────────
+      const psR = particlesRef.current;
+      for (let i = 0; i < psR.length; i++) {
+        const p = psR[i];
+        const a = Math.max(0, Math.min(1, p.life / p.maxLife));
+        ctx.globalAlpha = a;
+        ctx.fillStyle = p.color;
+        // Anchor to player car (sparks/smoke originate at the rear bumper)
+        const px = carX + p.x;
+        const py = carY + p.y;
+        if (p.kind === 'smoke') {
+          ctx.beginPath();
+          ctx.arc(px, py, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(px - p.size/2, py - p.size/2, p.size, p.size);
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // ── Weather overlays ──────────────────────────────────────────────
+      if (isRain) {
+        // Rain streaks
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.5)';
+        ctx.lineWidth = 1;
+        const rainCount = 90;
+        const drift = (performance.now() / 50) % 18;
+        for (let i = 0; i < rainCount; i++) {
+          const rx = ((i * 137.7) % w + drift * (i % 3)) % w;
+          const ry = ((i * 91.3 + drift * 30) % h);
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(rx - 4, ry + 18);
+          ctx.stroke();
+        }
+        // Wet road sheen
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.06)';
+        ctx.fillRect(0, horizon, w, h - horizon);
+      }
+      if (isFog) {
+        // Fog overlay — denser at distance (top of road), lighter at bottom
+        const fogGrad = ctx.createLinearGradient(0, horizon, 0, h);
+        fogGrad.addColorStop(0, 'rgba(226,232,240,0.85)');
+        fogGrad.addColorStop(0.5, 'rgba(203,213,225,0.45)');
+        fogGrad.addColorStop(1, 'rgba(226,232,240,0.0)');
+        ctx.fillStyle = fogGrad;
+        ctx.fillRect(0, horizon - 20, w, h - horizon + 20);
+      }
+      if (isNight) {
+        // Night vignette — darker at edges, slight headlight cone in front
+        const nGrad = ctx.createRadialGradient(w/2, h * 0.85, 100, w/2, h * 0.85, w * 0.7);
+        nGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        nGrad.addColorStop(1, 'rgba(0,0,0,0.55)');
+        ctx.fillStyle = nGrad;
+        ctx.fillRect(0, 0, w, h);
+        // Headlight cone (subtle yellow wedge)
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.07)';
+        ctx.beginPath();
+        ctx.moveTo(carX - 12, carY - 8);
+        ctx.lineTo(carX - 280, horizon + 30);
+        ctx.lineTo(carX + 280, horizon + 30);
+        ctx.lineTo(carX + 12, carY - 8);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Generic visibility dim from weather
+      if (wxNow.visMult < 1) {
+        ctx.fillStyle = `rgba(0,0,0,${(1 - wxNow.visMult) * 0.25})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // ── Motion blur (CSS filter on the canvas itself) ─────────────────
+      // Subtle blur kicks in above 350 km/h-ish, capped at 2.2px so the UI
+      // still reads. Boost adds a touch more for a punchier feel.
+      const motionBlurPx = Math.min(2.2,
+        Math.max(0, (localSpeed - 350) / 220) + (localBoostTimer > 0 ? 0.4 : 0)
+      );
+      canvas.style.filter = motionBlurPx > 0.05 ? `blur(${motionBlurPx.toFixed(2)}px)` : '';
+
+      // ── Smart camera shake: extra wobble at very high speed / overheat ─
+      if (localSpeed > 420) screenShake = Math.max(screenShake, (localSpeed - 420) * 0.02);
+      if (localEngineTemp > 80) screenShake = Math.max(screenShake, (localEngineTemp - 80) * 0.4);
       
       // Draw Near Miss Text
       if (nearMissTextRef.current) {
@@ -2446,6 +3226,121 @@ export default function App() {
                         </motion.button>
                       </div>
 
+                      {/* Race Settings */}
+                      <div className="w-full mt-4 p-4 bg-white/5 border border-white/10 rounded-2xl space-y-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-black text-white uppercase tracking-widest">Race Settings</p>
+                          <button
+                            onClick={() => setPracticeMode(p => !p)}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase border transition-all ${practiceMode ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-white/50 border-white/10'}`}
+                          >
+                            {practiceMode ? 'Practice ✓' : 'Practice'}
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 text-left">
+                          <p className="text-[9px] font-black text-white/40 uppercase tracking-widest">Track</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {(Object.keys(TRACK_THEMES) as TrackTheme[]).map(k => (
+                              <button
+                                key={k}
+                                onClick={() => { setTrackTheme(k); audioBus.playSfx('click'); }}
+                                className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${trackTheme === k ? 'bg-rose-600 text-white border-rose-400 shadow-lg shadow-rose-600/20' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                              >
+                                <div className="text-base">{TRACK_THEMES[k].emoji}</div>
+                                <div>{TRACK_THEMES[k].name}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 text-left">
+                          <p className="text-[9px] font-black text-white/40 uppercase tracking-widest">Weather</p>
+                          <div className="grid grid-cols-4 gap-2">
+                            {(Object.keys(WEATHER_OPTS) as Weather[]).map(k => (
+                              <button
+                                key={k}
+                                onClick={() => { setWeather(k); audioBus.playSfx('click'); }}
+                                className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${weather === k ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-600/20' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                              >
+                                <div className="text-base">{WEATHER_OPTS[k].emoji}</div>
+                                <div>{WEATHER_OPTS[k].name}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 text-left">
+                          <p className="text-[9px] font-black text-white/40 uppercase tracking-widest">Tires</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(Object.keys(TIRE_COMPOUNDS) as TireCompound[]).map(k => (
+                              <button
+                                key={k}
+                                onClick={() => { setTireCompound(k); audioBus.playSfx('click'); }}
+                                className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase transition-all border text-left ${tireCompound === k ? 'bg-amber-500 text-black border-amber-300 shadow-lg shadow-amber-500/20' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                              >
+                                <div className="flex items-center gap-1.5"><span className="text-base">{TIRE_COMPOUNDS[k].emoji}</span><span>{TIRE_COMPOUNDS[k].name}</span></div>
+                                <div className={`text-[8px] font-bold normal-case mt-0.5 ${tireCompound === k ? 'text-black/70' : 'text-white/40'}`}>{TIRE_COMPOUNDS[k].desc}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                          <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Voice Commentary</span>
+                          <button
+                            onClick={() => setVoiceEnabled(v => !v)}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase border transition-all ${voiceEnabled ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-white/40 border-white/10'}`}
+                          >
+                            {voiceEnabled ? 'On' : 'Off'}
+                          </button>
+                        </div>
+
+                        {(damage.engine + damage.brakes + damage.tires) > 0.05 && (
+                          <div className="pt-2 border-t border-white/10">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Vehicle Damage</span>
+                              <span className="text-[9px] font-mono text-white/40">repair in garage</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1 text-[9px] font-mono">
+                              <div className="bg-black/30 rounded p-1 text-center"><div className="text-white/40 uppercase font-black text-[8px]">Engine</div><div className={damage.engine > 0.5 ? 'text-rose-400' : 'text-white/70'}>{(damage.engine * 100).toFixed(0)}%</div></div>
+                              <div className="bg-black/30 rounded p-1 text-center"><div className="text-white/40 uppercase font-black text-[8px]">Brakes</div><div className={damage.brakes > 0.5 ? 'text-rose-400' : 'text-white/70'}>{(damage.brakes * 100).toFixed(0)}%</div></div>
+                              <div className="bg-black/30 rounded p-1 text-center"><div className="text-white/40 uppercase font-black text-[8px]">Tires</div><div className={damage.tires > 0.5 ? 'text-rose-400' : 'text-white/70'}>{(damage.tires * 100).toFixed(0)}%</div></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Daily Challenge */}
+                      <div className={`w-full mt-3 p-4 rounded-2xl border ${dailyDone ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-gradient-to-r from-purple-500/10 to-fuchsia-500/10 border-purple-500/20'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Trophy className={`w-4 h-4 ${dailyDone ? 'text-emerald-400' : 'text-purple-400'}`} />
+                            <p className={`text-xs font-black uppercase tracking-widest ${dailyDone ? 'text-emerald-400' : 'text-purple-400'}`}>Daily Challenge {dailyDone && '· Cleared'}</p>
+                          </div>
+                          <span className="text-[10px] font-mono text-white/40">+{dailyChallenge.reward} cr</span>
+                        </div>
+                        <p className="text-left text-[10px] font-mono text-white/60">
+                          {TRACK_THEMES[dailyChallenge.theme].emoji} {TRACK_THEMES[dailyChallenge.theme].name}
+                          · {WEATHER_OPTS[dailyChallenge.weather].emoji} {WEATHER_OPTS[dailyChallenge.weather].name}
+                          · {TIRE_COMPOUNDS[dailyChallenge.tire].emoji} {TIRE_COMPOUNDS[dailyChallenge.tire].name}
+                          · finish in {dailyChallenge.goalSec}s
+                        </p>
+                        {!dailyDone && (
+                          <button
+                            onClick={() => {
+                              setTrackTheme(dailyChallenge.theme);
+                              setWeather(dailyChallenge.weather);
+                              setTireCompound(dailyChallenge.tire);
+                              audioBus.playSfx('click');
+                            }}
+                            className="mt-2 px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-[10px] font-black uppercase hover:bg-purple-500/30"
+                          >
+                            Apply Challenge Settings
+                          </button>
+                        )}
+                      </div>
+
                       {/* Missions Dashboard Quick View */}
                       <motion.button
                         onClick={() => setIsMissionsOpen(true)}
@@ -2827,7 +3722,7 @@ export default function App() {
                       </motion.div>
                     )}
 
-                    <div className="max-w-md w-full mb-10 grid grid-cols-3 gap-3">
+                    <div className="max-w-md w-full mb-4 grid grid-cols-3 gap-3">
                       <div className="bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md">
                         <div className="text-[9px] font-black uppercase tracking-widest text-white/40">Level</div>
                         <div className="text-2xl font-mono font-black text-white drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]">{level}</div>
@@ -2841,6 +3736,65 @@ export default function App() {
                         <div className="text-2xl font-mono font-black text-yellow-300">{credits.toLocaleString()}</div>
                       </div>
                     </div>
+
+                    {/* Detailed Race Telemetry */}
+                    {lastRaceStats && (
+                      <div className="max-w-md w-full mb-8 bg-black/40 border border-white/10 rounded-2xl p-5 backdrop-blur-md text-left">
+                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Race Telemetry</p>
+                        <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Time</div>
+                            <div className="text-white text-base font-bold">{((lastRaceStats.endTime - lastRaceStats.startTime) / 1000).toFixed(1)}s</div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Top Speed</div>
+                            <div className="text-rose-400 text-base font-bold">{(lastRaceStats.topSpeed / 10).toFixed(0)} <span className="text-white/40 text-[8px]">km/h</span></div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Avg Speed</div>
+                            <div className="text-amber-400 text-base font-bold">{lastRaceStats.speedSamples.length ? ((lastRaceStats.speedSamples.reduce((a,b)=>a+b,0) / lastRaceStats.speedSamples.length) / 10).toFixed(0) : '0'} <span className="text-white/40 text-[8px]">km/h</span></div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Crashes</div>
+                            <div className="text-rose-400 text-base font-bold">{lastRaceStats.crashes}</div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Near Misses</div>
+                            <div className="text-emerald-400 text-base font-bold">{lastRaceStats.nearMisses}</div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Boosts</div>
+                            <div className="text-yellow-400 text-base font-bold">{lastRaceStats.boostsUsed}</div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Drafts</div>
+                            <div className="text-sky-400 text-base font-bold">{lastRaceStats.drafts}</div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Max Engine</div>
+                            <div className={`text-base font-bold ${lastRaceStats.maxEngineTemp > 80 ? 'text-rose-400' : 'text-white'}`}>{lastRaceStats.maxEngineTemp.toFixed(0)}°C</div>
+                          </div>
+                          <div className="bg-white/5 rounded p-2">
+                            <div className="text-white/40 uppercase font-black text-[8px]">Distance</div>
+                            <div className="text-white text-base font-bold">{(lastRaceStats.distanceCovered / 1000).toFixed(1)}<span className="text-white/40 text-[8px]"> km</span></div>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-white/10 text-[9px] font-mono text-white/40 flex flex-wrap gap-3">
+                          <span>Gear time:</span>
+                          {lastRaceStats.timeInGear.map((t, i) => (
+                            <span key={i}>G{i+1}: <span className="text-white/70">{t.toFixed(1)}s</span></span>
+                          ))}
+                        </div>
+                        {ghostBest && gameMode === 'single' && (
+                          <div className="mt-2 text-[10px] font-mono text-purple-300">
+                            👻 Ghost best: <span className="font-bold">{ghostBest.time.toFixed(1)}s</span>
+                            {((lastRaceStats.endTime - lastRaceStats.startTime) / 1000) <= ghostBest.time && (
+                              <span className="text-emerald-400 ml-2">— NEW RECORD!</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     
                     <button 
                       onClick={() => {
@@ -3087,16 +4041,114 @@ export default function App() {
                         {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
                       </p>
                     </div>
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10 col-span-2 flex items-center gap-4">
-                      <div className="flex-1">
-                        <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Setup Presets</p>
-                        <div className="flex gap-2">
-                           {presets.map((p, idx) => (
-                              <button key={idx} onClick={() => setGears(p.gears)} className="px-3 py-1 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-black uppercase">
-                                {p.name}
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10 col-span-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] text-white/40 uppercase font-black italic">Gear Presets</p>
+                        <button
+                          onClick={() => { const n = prompt('Preset name:'); if (n) setPresets([...presets, { name: n.slice(0, 12), gears: [...gears] }]); }}
+                          className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase hover:bg-white/15"
+                        >
+                          + Save Current
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {presets.map((p, idx) => (
+                          <div key={idx} className="flex items-center gap-1 bg-rose-600/20 border border-rose-500/30 rounded-lg overflow-hidden">
+                            <button onClick={() => { setGears(p.gears); audioBus.playSfx('click'); }} className="px-3 py-1 text-rose-400 text-[10px] font-black uppercase hover:bg-rose-600/30">
+                              {p.name}
+                            </button>
+                            {idx >= 3 && (
+                              <button onClick={() => setPresets(presets.filter((_, i) => i !== idx))} className="px-1.5 py-1 text-rose-400/60 hover:text-rose-300 hover:bg-rose-600/30 text-[10px]" title="Delete">×</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Vehicle Customization */}
+                  <div className="mt-8 bg-gradient-to-br from-fuchsia-500/5 to-rose-500/5 border border-fuchsia-500/20 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-black italic uppercase tracking-tighter text-fuchsia-400">Vehicle Customization</h3>
+                        <p className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">Color · Tires · Repair</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Car color */}
+                      <div>
+                        <p className="text-[10px] text-white/40 uppercase font-black mb-2 italic">Paint Color</p>
+                        <div className="flex flex-wrap gap-2">
+                          {CAR_COLORS.map(c => (
+                            <button
+                              key={c.id}
+                              onClick={() => { setCarColorId(c.id); audioBus.playSfx('click'); }}
+                              className={`w-10 h-10 rounded-xl border-2 transition-all ${carColorId === c.id ? 'border-white scale-110 shadow-lg' : 'border-white/20 hover:border-white/50'}`}
+                              style={{ background: `linear-gradient(135deg, ${c.body}, ${c.roof})` }}
+                              title={c.name}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-white/40 mt-1 font-mono">{CAR_COLORS.find(c => c.id === carColorId)?.name}</p>
+                      </div>
+
+                      {/* Tire compound */}
+                      <div>
+                        <p className="text-[10px] text-white/40 uppercase font-black mb-2 italic">Tire Compound</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(Object.keys(TIRE_COMPOUNDS) as TireCompound[]).map(k => (
+                            <button
+                              key={k}
+                              onClick={() => { setTireCompound(k); audioBus.playSfx('click'); }}
+                              className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase transition-all border text-left ${tireCompound === k ? 'bg-amber-500 text-black border-amber-300' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                            >
+                              <div className="flex items-center gap-1.5"><span className="text-base">{TIRE_COMPOUNDS[k].emoji}</span><span>{TIRE_COMPOUNDS[k].name}</span></div>
+                              <div className={`text-[8px] font-bold normal-case mt-0.5 ${tireCompound === k ? 'text-black/70' : 'text-white/40'}`}>{TIRE_COMPOUNDS[k].desc}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Repair */}
+                      <div className="pt-3 border-t border-white/10">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] text-white/40 uppercase font-black italic">Vehicle Damage</p>
+                          {(() => {
+                            const totalDmg = damage.engine + damage.brakes + damage.tires;
+                            const cost = Math.ceil(totalDmg * 250);
+                            return (
+                              <button
+                                onClick={() => {
+                                  if (totalDmg < 0.01) return;
+                                  if (credits < cost) { speak('Not enough credits'); return; }
+                                  setCredits(prev => Math.max(0, prev - cost));
+                                  setDamage({ engine: 0, brakes: 0, tires: 0 });
+                                  audioBus.playSfx('coin');
+                                  speak('Vehicle fully repaired');
+                                }}
+                                disabled={totalDmg < 0.01 || credits < cost}
+                                className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                {totalDmg < 0.01 ? 'No Damage' : `Repair · ${cost} cr`}
                               </button>
-                           ))}
-                           <button onClick={() => {const n=prompt('Preset name:'); if(n) setPresets([...presets, {name:n, gears:[...gears]}])}} className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase">Save</button>
+                            );
+                          })()}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
+                          {[
+                            { key: 'engine', label: 'Engine', val: damage.engine, color: 'text-rose-400' },
+                            { key: 'brakes', label: 'Brakes', val: damage.brakes, color: 'text-amber-400' },
+                            { key: 'tires',  label: 'Tires',  val: damage.tires,  color: 'text-yellow-400' },
+                          ].map(d => (
+                            <div key={d.key} className="bg-black/30 rounded-lg p-2">
+                              <div className="text-white/40 uppercase font-black text-[8px] mb-1">{d.label}</div>
+                              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                <div className={`h-full ${d.val > 0.5 ? 'bg-rose-500' : d.val > 0.2 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, d.val * 100)}%` }} />
+                              </div>
+                              <div className={`text-right text-[9px] mt-1 ${d.color}`}>{(d.val * 100).toFixed(0)}%</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
