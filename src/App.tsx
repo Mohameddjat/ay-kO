@@ -1304,60 +1304,117 @@ export default function App() {
 
       ctx.clearRect(0, 0, w, h);
 
-      // Sky Gradient
+      // Sky Gradient — bright vivid blue like the cover, lighter near horizon
       const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
-      skyGrad.addColorStop(0, '#1e3a8a'); // Deep blue
-      skyGrad.addColorStop(1, '#60a5fa'); // Sky blue
+      skyGrad.addColorStop(0, '#1d4ed8');  // Rich royal blue at top
+      skyGrad.addColorStop(0.5, '#3b82f6'); // Sky blue
+      skyGrad.addColorStop(1, '#bae6fd');  // Pale haze at horizon
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, w, horizon);
 
-      // Simple Sun
-      ctx.fillStyle = '#fef08a';
-      ctx.shadowBlur = 40;
-      ctx.shadowColor = '#facc15';
+      // Sun position (upper-right like the cover)
+      const sunX = w * 0.82;
+      const sunY = h * 0.16;
+
+      // Sun rays — soft radial lens flare
+      const rayGrad = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, w * 0.55);
+      rayGrad.addColorStop(0, 'rgba(255, 245, 200, 0.55)');
+      rayGrad.addColorStop(0.15, 'rgba(255, 230, 150, 0.25)');
+      rayGrad.addColorStop(0.5, 'rgba(255, 230, 150, 0.05)');
+      rayGrad.addColorStop(1, 'rgba(255, 230, 150, 0)');
+      ctx.fillStyle = rayGrad;
+      ctx.fillRect(0, 0, w, horizon);
+
+      // Sun core (bright white-yellow with strong glow)
+      ctx.shadowBlur = 60;
+      ctx.shadowColor = '#fde68a';
+      ctx.fillStyle = '#fefce8';
       ctx.beginPath();
-      ctx.arc(w * 0.8, h * 0.15, 30, 0, Math.PI * 2);
+      ctx.arc(sunX, sunY, 28, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
+      // Outer halo
+      ctx.fillStyle = 'rgba(254, 240, 138, 0.5)';
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 42, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Simple Clouds
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      const drawCloud = (cx: number, cy: number, size: number) => {
+      // Soft puffy clouds
+      const drawCloud = (cx: number, cy: number, size: number, alpha: number = 0.55) => {
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.beginPath();
         ctx.arc(cx, cy, size, 0, Math.PI * 2);
         ctx.arc(cx + size * 0.6, cy - size * 0.2, size * 0.8, 0, Math.PI * 2);
         ctx.arc(cx + size * 1.2, cy, size * 0.7, 0, Math.PI * 2);
+        ctx.arc(cx + size * 0.3, cy + size * 0.15, size * 0.7, 0, Math.PI * 2);
         ctx.fill();
       };
-      drawCloud(w * 0.2, h * 0.1, 20);
-      drawCloud(w * 0.5, h * 0.05, 15);
-      drawCloud(w * 0.7, h * 0.12, 25);
+      drawCloud(w * 0.18, h * 0.12, 22, 0.55);
+      drawCloud(w * 0.45, h * 0.07, 16, 0.45);
+      drawCloud(w * 0.62, h * 0.18, 18, 0.4);
+      drawCloud(w * 0.05, h * 0.22, 14, 0.35);
 
-      // Draw Distant Mountains Silhouette
-      ctx.fillStyle = '#1e293b';
+      // Distant mountains — far layer (light blue/grey haze)
+      ctx.fillStyle = '#7dd3fc';
+      ctx.globalAlpha = 0.55;
       ctx.beginPath();
       ctx.moveTo(0, horizon);
-      ctx.lineTo(w * 0.1, horizon - 20);
-      ctx.lineTo(w * 0.2, horizon - 40);
-      ctx.lineTo(w * 0.3, horizon - 10);
-      ctx.lineTo(w * 0.4, horizon - 30);
-      ctx.lineTo(w * 0.6, horizon - 50);
-      ctx.lineTo(w * 0.8, horizon - 20);
+      ctx.lineTo(w * 0.05, horizon - 18);
+      ctx.lineTo(w * 0.15, horizon - 35);
+      ctx.lineTo(w * 0.25, horizon - 22);
+      ctx.lineTo(w * 0.38, horizon - 48);
+      ctx.lineTo(w * 0.5, horizon - 30);
+      ctx.lineTo(w * 0.65, horizon - 55);
+      ctx.lineTo(w * 0.78, horizon - 25);
+      ctx.lineTo(w * 0.92, horizon - 40);
+      ctx.lineTo(w, horizon - 15);
       ctx.lineTo(w, horizon);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Closer mountains — darker silhouette
+      ctx.fillStyle = '#1e3a8a';
+      ctx.beginPath();
+      ctx.moveTo(0, horizon);
+      ctx.lineTo(w * 0.1, horizon - 12);
+      ctx.lineTo(w * 0.22, horizon - 28);
+      ctx.lineTo(w * 0.32, horizon - 8);
+      ctx.lineTo(w * 0.45, horizon - 22);
+      ctx.lineTo(w * 0.6, horizon - 40);
+      ctx.lineTo(w * 0.72, horizon - 18);
+      ctx.lineTo(w * 0.85, horizon - 32);
+      ctx.lineTo(w, horizon - 10);
+      ctx.lineTo(w, horizon);
+      ctx.closePath();
       ctx.fill();
 
-      // Draw Grass
-      ctx.fillStyle = '#064e3b';
+      // Vivid grass — bright track-side green like the cover
+      const grassGrad = ctx.createLinearGradient(0, horizon, 0, h);
+      grassGrad.addColorStop(0, '#16a34a');
+      grassGrad.addColorStop(0.5, '#15803d');
+      grassGrad.addColorStop(1, '#14532d');
+      ctx.fillStyle = grassGrad;
       ctx.fillRect(0, horizon, w, h - horizon);
 
-      // Draw Road as N vertical strips, each bent by slope ahead → road climbs/dips visually.
+      // Horizon haze line — softens the grass/sky transition
+      const hazeGrad = ctx.createLinearGradient(0, horizon - 4, 0, horizon + 8);
+      hazeGrad.addColorStop(0, 'rgba(186, 230, 253, 0)');
+      hazeGrad.addColorStop(0.5, 'rgba(186, 230, 253, 0.65)');
+      hazeGrad.addColorStop(1, 'rgba(34, 197, 94, 0)');
+      ctx.fillStyle = hazeGrad;
+      ctx.fillRect(0, horizon - 4, w, 12);
+
+      // Draw Road as N vertical strips. Lighter asphalt with subtle gradient near foreground.
       const ROAD_STRIPS = 36;
-      ctx.fillStyle = '#1a1a1a';
       for (let i = 0; i < ROAD_STRIPS; i++) {
         const s1 = i / ROAD_STRIPS;
         const s2 = (i + 1) / ROAD_STRIPS;
         const y1 = yAt(s1);
         const y2 = yAt(s2);
+        // Darker far away, slightly lighter near camera
+        const shade = 30 + Math.floor(s2 * 22);
+        ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade + 2})`;
         ctx.beginPath();
         ctx.moveTo(getX(-1.8, s1), y1);
         ctx.lineTo(getX(1.8, s1), y1);
@@ -1366,10 +1423,8 @@ export default function App() {
         ctx.closePath();
         ctx.fill();
       }
-      // Grass on the SIDES of the bent road. Each polygon traces the road's
-      // outer edge from horizon down to foreground, then closes along the
-      // screen edge — covering everything between the road and screen edge.
-      ctx.fillStyle = '#064e3b';
+      // Grass on the SIDES of the bent road.
+      ctx.fillStyle = '#15803d';
       // Left side
       ctx.beginPath();
       ctx.moveTo(0, h);
@@ -1393,32 +1448,54 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Rumble Strips (Side of road)
-      const stripCount = 20;
+      // Rumble Strips (Side of road) — bold red/white checker like the cover
+      const stripCount = 22;
       for (let i = 0; i < stripCount; i++) {
-        const zPos = ((localDistance / 100) + i) % stripCount;
+        const zPos = ((localDistance / 80) + i) % stripCount;
         const s1 = 1 - (zPos / stripCount);
         const s2 = 1 - ((zPos + 0.5) / stripCount);
-        
-        ctx.fillStyle = Math.floor(zPos) % 2 === 0 ? '#fff' : '#e11d48';
-        
+        if (s1 <= 0 || s2 <= 0) continue;
+
+        const isWhite = Math.floor(zPos) % 2 === 0;
         const ry1 = yAt(s1);
         const ry2 = yAt(s2);
 
-        // Left Strip
+        // Left curb — wider band
+        ctx.fillStyle = isWhite ? '#ffffff' : '#dc2626';
         ctx.beginPath();
-        ctx.moveTo(getX(-1.8, s1), ry1);
-        ctx.lineTo(getX(-1.6, s1), ry1);
+        ctx.moveTo(getX(-1.95, s1), ry1);
+        ctx.lineTo(getX(-1.55, s1), ry1);
+        ctx.lineTo(getX(-1.55, s2), ry2);
+        ctx.lineTo(getX(-1.95, s2), ry2);
+        ctx.closePath();
+        ctx.fill();
+        // Inner darker bevel for depth
+        ctx.fillStyle = isWhite ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.18)';
+        ctx.beginPath();
+        ctx.moveTo(getX(-1.6, s1), ry1);
+        ctx.lineTo(getX(-1.55, s1), ry1);
+        ctx.lineTo(getX(-1.55, s2), ry2);
         ctx.lineTo(getX(-1.6, s2), ry2);
-        ctx.lineTo(getX(-1.8, s2), ry2);
+        ctx.closePath();
         ctx.fill();
 
-        // Right Strip
+        // Right curb
+        ctx.fillStyle = isWhite ? '#ffffff' : '#dc2626';
         ctx.beginPath();
-        ctx.moveTo(getX(1.6, s1), ry1);
-        ctx.lineTo(getX(1.8, s1), ry1);
-        ctx.lineTo(getX(1.8, s2), ry2);
+        ctx.moveTo(getX(1.55, s1), ry1);
+        ctx.lineTo(getX(1.95, s1), ry1);
+        ctx.lineTo(getX(1.95, s2), ry2);
+        ctx.lineTo(getX(1.55, s2), ry2);
+        ctx.closePath();
+        ctx.fill();
+        // Inner bevel
+        ctx.fillStyle = isWhite ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.18)';
+        ctx.beginPath();
+        ctx.moveTo(getX(1.55, s1), ry1);
+        ctx.lineTo(getX(1.6, s1), ry1);
         ctx.lineTo(getX(1.6, s2), ry2);
+        ctx.lineTo(getX(1.55, s2), ry2);
+        ctx.closePath();
         ctx.fill();
       }
 
@@ -1710,42 +1787,136 @@ export default function App() {
         ctx.restore();
       });
 
-      // Draw Player Car (Improved 3D-ish model and positioning)
-      const carScale = 0.5; // Even smaller for better perspective
-      const carX = getX(localPlayerLane, 0.9); // Positioned slightly further up for better view
-      const carY = h - 30; 
-      
-      // Car Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      // Draw Player Car — sleek sports car (rear view) inspired by the cover art
+      const carX = getX(localPlayerLane, 0.9);
+      const carY = h - 30;
+      const cw = 78;   // car width
+      const ch = 40;   // car body height
+      const isBoost = localBoostTimer > 0;
+      const bodyMain = isBoost ? '#fbbf24' : '#dc2626';
+      const bodyDark = isBoost ? '#b45309' : '#7f1d1d';
+      const bodyLite = isBoost ? '#fde68a' : '#f87171';
+
+      // Ground shadow under car
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
-      ctx.ellipse(carX, carY + 8, 35, 12, 0, 0, Math.PI * 2);
+      ctx.ellipse(carX, carY + 14, cw * 0.55, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Car Body
-      ctx.fillStyle = localBoostTimer > 0 ? '#fbbf24' : '#e11d48';
-      ctx.shadowBlur = localBoostTimer > 0 ? 30 : 0;
+      // Lower body / diffuser (darkest)
+      ctx.fillStyle = '#0a0a0a';
+      ctx.beginPath();
+      ctx.roundRect(carX - cw/2 - 2, carY + 4, cw + 4, 14, 4);
+      ctx.fill();
+
+      // Main body — wedge with rounded sides
+      const bodyGrad = ctx.createLinearGradient(carX, carY - ch/2, carX, carY + 8);
+      bodyGrad.addColorStop(0, bodyLite);
+      bodyGrad.addColorStop(0.5, bodyMain);
+      bodyGrad.addColorStop(1, bodyDark);
+      ctx.fillStyle = bodyGrad;
+      ctx.shadowBlur = isBoost ? 28 : 0;
       ctx.shadowColor = '#fbbf24';
       ctx.beginPath();
-      ctx.roundRect(carX - 30, carY - 15, 60, 30, 6);
+      ctx.moveTo(carX - cw/2, carY + 6);
+      ctx.lineTo(carX - cw/2 + 4, carY - ch/2 + 6);
+      ctx.quadraticCurveTo(carX - cw/2 + 12, carY - ch/2, carX - cw/2 + 18, carY - ch/2);
+      ctx.lineTo(carX + cw/2 - 18, carY - ch/2);
+      ctx.quadraticCurveTo(carX + cw/2 - 12, carY - ch/2, carX + cw/2 - 4, carY - ch/2 + 6);
+      ctx.lineTo(carX + cw/2, carY + 6);
+      ctx.closePath();
       ctx.fill();
-      
-      // Car Roof
-      ctx.fillStyle = localBoostTimer > 0 ? '#fef3c7' : '#f43f5e';
+      ctx.shadowBlur = 0;
+
+      // Roof / cabin (slightly darker for shape)
+      ctx.fillStyle = bodyDark;
       ctx.beginPath();
-      ctx.roundRect(carX - 22, carY - 26, 44, 18, 4);
+      ctx.moveTo(carX - cw/2 + 16, carY - ch/2 + 2);
+      ctx.lineTo(carX - cw/2 + 22, carY - ch/2 - 14);
+      ctx.lineTo(carX + cw/2 - 22, carY - ch/2 - 14);
+      ctx.lineTo(carX + cw/2 - 16, carY - ch/2 + 2);
+      ctx.closePath();
       ctx.fill();
 
-      // Windows
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(carX - 18, carY - 24, 36, 11);
-      
-      // Tail Lights
-      ctx.fillStyle = isBraking ? '#ff0000' : '#991b1b';
-      ctx.shadowBlur = isBraking ? 15 : 0;
+      // Rear window (glossy black with highlight)
+      const winGrad = ctx.createLinearGradient(carX, carY - ch/2 - 13, carX, carY - ch/2);
+      winGrad.addColorStop(0, '#1e293b');
+      winGrad.addColorStop(0.6, '#0f172a');
+      winGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = winGrad;
+      ctx.beginPath();
+      ctx.moveTo(carX - cw/2 + 20, carY - ch/2 + 1);
+      ctx.lineTo(carX - cw/2 + 24, carY - ch/2 - 12);
+      ctx.lineTo(carX + cw/2 - 24, carY - ch/2 - 12);
+      ctx.lineTo(carX + cw/2 - 20, carY - ch/2 + 1);
+      ctx.closePath();
+      ctx.fill();
+      // Window highlight
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(carX - cw/2 + 22, carY - ch/2 - 11);
+      ctx.lineTo(carX - cw/2 + 26, carY - ch/2 - 11);
+      ctx.lineTo(carX - cw/2 + 22, carY - ch/2 - 5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Rear spoiler
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(carX - cw/2 + 8, carY - ch/2 - 17, cw - 16, 3);
+      ctx.fillRect(carX - cw/2 + 12, carY - ch/2 - 14, 4, 4);
+      ctx.fillRect(carX + cw/2 - 16, carY - ch/2 - 14, 4, 4);
+
+      // Body horizontal highlight band
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(carX - cw/2 + 6, carY - ch/2 + 8, cw - 12, 2);
+
+      // Center body crease (dark line for shape)
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(carX, carY - ch/2 + 6);
+      ctx.lineTo(carX, carY + 4);
+      ctx.stroke();
+
+      // Brake lights — wide LED strip
+      ctx.fillStyle = isBraking ? '#ff1d1d' : '#7f1d1d';
+      ctx.shadowBlur = isBraking ? 20 : 4;
       ctx.shadowColor = '#ff0000';
-      ctx.fillRect(carX - 26, carY - 4, 11, 6);
-      ctx.fillRect(carX + 15, carY - 4, 11, 6);
+      ctx.fillRect(carX - cw/2 + 6, carY - 6, 16, 7);
+      ctx.fillRect(carX + cw/2 - 22, carY - 6, 16, 7);
+      // Center brake bar
+      if (isBraking) {
+        ctx.fillStyle = '#ff4d4d';
+        ctx.fillRect(carX - 16, carY - ch/2 - 13, 32, 2);
+      }
       ctx.shadowBlur = 0;
+
+      // License plate
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(carX - 11, carY + 1, 22, 8);
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('GS-01', carX, carY + 7);
+
+      // Dual exhaust pipes
+      ctx.fillStyle = '#1f2937';
+      ctx.beginPath();
+      ctx.arc(carX - 14, carY + 14, 3, 0, Math.PI * 2);
+      ctx.arc(carX + 14, carY + 14, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(carX - 14, carY + 14, 1.8, 0, Math.PI * 2);
+      ctx.arc(carX + 14, carY + 14, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wheel arches peeking out at the bottom
+      ctx.fillStyle = '#0a0a0a';
+      ctx.beginPath();
+      ctx.roundRect(carX - cw/2 - 2, carY + 8, 12, 10, 3);
+      ctx.roundRect(carX + cw/2 - 10, carY + 8, 12, 10, 3);
+      ctx.fill();
       
       // Draw Near Miss Text
       if (nearMissTextRef.current) {
