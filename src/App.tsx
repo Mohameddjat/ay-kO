@@ -1133,19 +1133,23 @@ export default function App() {
       else localPlayerLane += diff * tireResponse * dt;
       setPlayerLane(localPlayerLane);
 
-      // Heat management — uphill stresses the engine, downhill braking cooks brakes.
-      // Wrong gear (too low for current speed) over-revs and adds heat too.
+      // Heat management — driven primarily by ENGINE RPM, which is proportional to
+      // (speed / torque). High torque setup → lower RPM at any given speed → less heat.
+      // Low torque setup → higher RPM to chase top speed → much more heat.
       const overRev = Math.max(0, (localSpeed / Math.max(50, topSpeed)) - 0.95) * 8;
       // Cooling tuning: level 1 = +50% heat, level 5 = -40% heat. Stacks with super_cooler.
       const coolMult = (1 - (tn.cooling - 3) * 0.18) * (hasUpgrade('super_cooler') ? 0.6 : 1);
-      const coolDecay = 5 * (1 + (tn.cooling - 3) * 0.25); // off-throttle cool-down
+      const coolDecay = 6 * (1 + (tn.cooling - 3) * 0.25); // off-throttle cool-down (slightly faster)
+      // RPM proxy — high when speed is high relative to available torque.
+      // currentTorque ~ baseTorque / ratio^0.7; higher ratio (lower torque) → larger rpmHeat.
+      const rpmHeat = (localSpeed / Math.max(20, currentTorque)) * 1.4;
       if (activeAcceleration) {
-        const slopeHeat = Math.max(0, slope) * 18; // uphill burst
-        const heatGen = (effectiveRatio * 0.5 + localSpeed * 0.01 + slopeHeat + overRev) * coolMult;
+        const slopeHeat = Math.max(0, slope) * 14; // uphill burst, slightly softer
+        const heatGen = (rpmHeat + slopeHeat + overRev) * coolMult;
         localEngineTemp = Math.min(100, localEngineTemp + heatGen * dt);
       } else {
         // Engine still warms a bit going uphill even off-throttle
-        const idleHeat = Math.max(0, slope) * 4 + overRev * 0.4;
+        const idleHeat = Math.max(0, slope) * 3 + overRev * 0.4;
         localEngineTemp = Math.max(20, localEngineTemp + (idleHeat - coolDecay) * dt);
       }
       setEngineTemp(localEngineTemp);
@@ -1448,56 +1452,65 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Rumble Strips (Side of road) — bold red/white checker like the cover
-      const stripCount = 22;
+      // Rumble Strips (Side of road) — bold red/white checker like the cover.
+      // Each block fully spans 1 unit of z (no half-step) so blocks don't overlap or look striped.
+      const stripCount = 24;
+      const rumbleInner = 1.62;
+      const rumbleOuter = 1.92;
       for (let i = 0; i < stripCount; i++) {
-        const zPos = ((localDistance / 80) + i) % stripCount;
+        const zPos = ((localDistance / 90) + i) % stripCount;
         const s1 = 1 - (zPos / stripCount);
-        const s2 = 1 - ((zPos + 0.5) / stripCount);
-        if (s1 <= 0 || s2 <= 0) continue;
+        const s2 = 1 - ((zPos + 1) / stripCount);
+        if (s1 <= 0.001 || s2 <= 0.001) continue;
 
         const isWhite = Math.floor(zPos) % 2 === 0;
         const ry1 = yAt(s1);
         const ry2 = yAt(s2);
 
-        // Left curb — wider band
+        // Left curb — solid block
         ctx.fillStyle = isWhite ? '#ffffff' : '#dc2626';
         ctx.beginPath();
-        ctx.moveTo(getX(-1.95, s1), ry1);
-        ctx.lineTo(getX(-1.55, s1), ry1);
-        ctx.lineTo(getX(-1.55, s2), ry2);
-        ctx.lineTo(getX(-1.95, s2), ry2);
-        ctx.closePath();
-        ctx.fill();
-        // Inner darker bevel for depth
-        ctx.fillStyle = isWhite ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.18)';
-        ctx.beginPath();
-        ctx.moveTo(getX(-1.6, s1), ry1);
-        ctx.lineTo(getX(-1.55, s1), ry1);
-        ctx.lineTo(getX(-1.55, s2), ry2);
-        ctx.lineTo(getX(-1.6, s2), ry2);
+        ctx.moveTo(getX(-rumbleOuter, s1), ry1);
+        ctx.lineTo(getX(-rumbleInner, s1), ry1);
+        ctx.lineTo(getX(-rumbleInner, s2), ry2);
+        ctx.lineTo(getX(-rumbleOuter, s2), ry2);
         ctx.closePath();
         ctx.fill();
 
-        // Right curb
-        ctx.fillStyle = isWhite ? '#ffffff' : '#dc2626';
+        // Right curb — solid block
         ctx.beginPath();
-        ctx.moveTo(getX(1.55, s1), ry1);
-        ctx.lineTo(getX(1.95, s1), ry1);
-        ctx.lineTo(getX(1.95, s2), ry2);
-        ctx.lineTo(getX(1.55, s2), ry2);
-        ctx.closePath();
-        ctx.fill();
-        // Inner bevel
-        ctx.fillStyle = isWhite ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.18)';
-        ctx.beginPath();
-        ctx.moveTo(getX(1.55, s1), ry1);
-        ctx.lineTo(getX(1.6, s1), ry1);
-        ctx.lineTo(getX(1.6, s2), ry2);
-        ctx.lineTo(getX(1.55, s2), ry2);
+        ctx.moveTo(getX(rumbleInner, s1), ry1);
+        ctx.lineTo(getX(rumbleOuter, s1), ry1);
+        ctx.lineTo(getX(rumbleOuter, s2), ry2);
+        ctx.lineTo(getX(rumbleInner, s2), ry2);
         ctx.closePath();
         ctx.fill();
       }
+      // Thin dark separator line between curb and asphalt — gives that crisp painted-edge look
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const s = i / 24;
+        const xL = getX(-rumbleInner, s);
+        const xR = getX(rumbleInner, s);
+        const yy = yAt(s);
+        if (i === 0) {
+          ctx.moveTo(xL, yy);
+        } else {
+          ctx.lineTo(xL, yy);
+        }
+        // We'll draw the right line in a second pass
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const s = i / 24;
+        const xR = getX(rumbleInner, s);
+        const yy = yAt(s);
+        if (i === 0) ctx.moveTo(xR, yy); else ctx.lineTo(xR, yy);
+      }
+      ctx.stroke();
 
       // Lane Lines — drawn as bent dashed segments so they follow the hills.
       ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : 'rgba(255,255,255,0.3)';
@@ -1789,9 +1802,9 @@ export default function App() {
 
       // Draw Player Car — sleek sports car (rear view) inspired by the cover art
       const carX = getX(localPlayerLane, 0.9);
-      const carY = h - 30;
-      const cw = 78;   // car width
-      const ch = 40;   // car body height
+      const carY = h - 38;
+      const cw = 110;  // car width (enlarged)
+      const ch = 56;   // car body height (enlarged)
       const isBoost = localBoostTimer > 0;
       const bodyMain = isBoost ? '#fbbf24' : '#dc2626';
       const bodyDark = isBoost ? '#b45309' : '#7f1d1d';
@@ -1878,44 +1891,46 @@ export default function App() {
       ctx.lineTo(carX, carY + 4);
       ctx.stroke();
 
-      // Brake lights — wide LED strip
+      // Brake lights — wide LED strip (sized relative to car width)
+      const brakeW = cw * 0.26;
       ctx.fillStyle = isBraking ? '#ff1d1d' : '#7f1d1d';
-      ctx.shadowBlur = isBraking ? 20 : 4;
+      ctx.shadowBlur = isBraking ? 24 : 5;
       ctx.shadowColor = '#ff0000';
-      ctx.fillRect(carX - cw/2 + 6, carY - 6, 16, 7);
-      ctx.fillRect(carX + cw/2 - 22, carY - 6, 16, 7);
+      ctx.fillRect(carX - cw/2 + 8, carY - 9, brakeW, 10);
+      ctx.fillRect(carX + cw/2 - 8 - brakeW, carY - 9, brakeW, 10);
       // Center brake bar
       if (isBraking) {
         ctx.fillStyle = '#ff4d4d';
-        ctx.fillRect(carX - 16, carY - ch/2 - 13, 32, 2);
+        ctx.fillRect(carX - cw * 0.22, carY - ch/2 - 18, cw * 0.44, 3);
       }
       ctx.shadowBlur = 0;
 
       // License plate
       ctx.fillStyle = '#f1f5f9';
-      ctx.fillRect(carX - 11, carY + 1, 22, 8);
+      ctx.fillRect(carX - 16, carY + 2, 32, 11);
       ctx.fillStyle = '#0f172a';
-      ctx.font = 'bold 7px monospace';
+      ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('GS-01', carX, carY + 7);
+      ctx.fillText('GS-01', carX, carY + 10);
 
       // Dual exhaust pipes
+      const exhX = cw * 0.22;
       ctx.fillStyle = '#1f2937';
       ctx.beginPath();
-      ctx.arc(carX - 14, carY + 14, 3, 0, Math.PI * 2);
-      ctx.arc(carX + 14, carY + 14, 3, 0, Math.PI * 2);
+      ctx.arc(carX - exhX, carY + 18, 4.5, 0, Math.PI * 2);
+      ctx.arc(carX + exhX, carY + 18, 4.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#000';
       ctx.beginPath();
-      ctx.arc(carX - 14, carY + 14, 1.8, 0, Math.PI * 2);
-      ctx.arc(carX + 14, carY + 14, 1.8, 0, Math.PI * 2);
+      ctx.arc(carX - exhX, carY + 18, 2.6, 0, Math.PI * 2);
+      ctx.arc(carX + exhX, carY + 18, 2.6, 0, Math.PI * 2);
       ctx.fill();
 
       // Wheel arches peeking out at the bottom
       ctx.fillStyle = '#0a0a0a';
       ctx.beginPath();
-      ctx.roundRect(carX - cw/2 - 2, carY + 8, 12, 10, 3);
-      ctx.roundRect(carX + cw/2 - 10, carY + 8, 12, 10, 3);
+      ctx.roundRect(carX - cw/2 - 3, carY + 10, 17, 14, 4);
+      ctx.roundRect(carX + cw/2 - 14, carY + 10, 17, 14, 4);
       ctx.fill();
       
       // Draw Near Miss Text
@@ -2259,8 +2274,8 @@ export default function App() {
               const torquePct = Math.min(1, torqueVal / torqueMax);
               return (
                 <>
-                  <div className="absolute left-2 top-24 z-30 pointer-events-none hidden sm:flex flex-row items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-2 py-2 shadow-xl">
-                    <div className="relative w-3 h-28 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                  <div className="absolute left-2 top-20 z-30 pointer-events-none hidden sm:flex flex-row items-center gap-3 bg-black/40 backdrop-blur-md border border-white/15 rounded-2xl px-3 py-3 shadow-2xl">
+                    <div className="relative w-5 h-44 bg-white/5 rounded-full overflow-hidden border border-white/15">
                       <motion.div
                         className="absolute bottom-0 left-0 right-0 rounded-full"
                         style={{
@@ -2270,21 +2285,21 @@ export default function App() {
                         transition={{ duration: 0.15 }}
                       />
                       {[0.25, 0.5, 0.75].map(t => (
-                        <div key={t} className="absolute left-0 right-0 h-px bg-white/10" style={{ bottom: `${t * 100}%` }} />
+                        <div key={t} className="absolute left-0 right-0 h-px bg-white/15" style={{ bottom: `${t * 100}%` }} />
                       ))}
                     </div>
-                    <div className="flex flex-col items-start leading-tight">
-                      <p className="text-[8px] text-white/50 uppercase font-black tracking-widest">Speed</p>
-                      <p className="text-lg font-mono font-black text-rose-500 italic">
+                    <div className="flex flex-col items-start leading-tight min-w-[68px]">
+                      <p className="text-[10px] text-white/60 uppercase font-black tracking-widest">Speed</p>
+                      <p className="text-3xl font-mono font-black text-rose-500 italic">
                         {speedKmh.toFixed(0)}
                       </p>
-                      <p className="text-[8px] text-white/40 font-black tracking-widest">KM/H</p>
+                      <p className="text-[10px] text-white/50 font-black tracking-widest">KM/H</p>
                     </div>
                   </div>
 
                   {/* Vertical Torque Gauge - Top Right */}
-                  <div className="absolute right-2 top-24 z-30 pointer-events-none hidden sm:flex flex-row-reverse items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-2 py-2 shadow-xl">
-                    <div className="relative w-3 h-28 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                  <div className="absolute right-2 top-20 z-30 pointer-events-none hidden sm:flex flex-row-reverse items-center gap-3 bg-black/40 backdrop-blur-md border border-white/15 rounded-2xl px-3 py-3 shadow-2xl">
+                    <div className="relative w-5 h-44 bg-white/5 rounded-full overflow-hidden border border-white/15">
                       <motion.div
                         className="absolute bottom-0 left-0 right-0 rounded-full"
                         style={{
@@ -2294,15 +2309,15 @@ export default function App() {
                         transition={{ duration: 0.15 }}
                       />
                       {[0.25, 0.5, 0.75].map(t => (
-                        <div key={t} className="absolute left-0 right-0 h-px bg-white/10" style={{ bottom: `${t * 100}%` }} />
+                        <div key={t} className="absolute left-0 right-0 h-px bg-white/15" style={{ bottom: `${t * 100}%` }} />
                       ))}
                     </div>
-                    <div className="flex flex-col items-end leading-tight">
-                      <p className="text-[8px] text-white/50 uppercase font-black tracking-widest">Torque</p>
-                      <p className="text-lg font-mono font-black text-amber-500 italic">
+                    <div className="flex flex-col items-end leading-tight min-w-[68px]">
+                      <p className="text-[10px] text-white/60 uppercase font-black tracking-widest">Torque</p>
+                      <p className="text-3xl font-mono font-black text-amber-500 italic">
                         {torqueVal.toFixed(0)}
                       </p>
-                      <p className="text-[8px] text-white/40 font-black tracking-widest">Nm</p>
+                      <p className="text-[10px] text-white/50 font-black tracking-widest">Nm</p>
                     </div>
                   </div>
                 </>
@@ -2311,7 +2326,7 @@ export default function App() {
 
             {/* Auxiliary indicators — always a vertical column on the left during racing */}
             {gameState === 'racing' && (
-            <div className="absolute left-2 top-44 z-30 pointer-events-none">
+            <div className="absolute left-2 top-[260px] z-30 pointer-events-none">
               <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-2 flex flex-col gap-2 shadow-xl w-[96px]">
                 <div className="text-center">
                   <p className="text-[8px] text-white/40 uppercase font-black tracking-widest mb-0.5">Efficiency</p>
