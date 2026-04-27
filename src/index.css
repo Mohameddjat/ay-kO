@@ -42,6 +42,40 @@ body {
   background-size: 40px 40px;
 }
 
+@keyframes gearSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes gearSpinReverse {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+.animate-gear-spin   { animation: gearSpin 4s linear infinite; transform-origin: center; }
+.animate-gear-spin-r { animation: gearSpinReverse 4s linear infinite; transform-origin: center; }
+.animate-gear-spin-fast   { animation: gearSpin 2s linear infinite; transform-origin: center; }
+.animate-gear-spin-fast-r { animation: gearSpinReverse 2s linear infinite; transform-origin: center; }
+
+@keyframes sparkFly {
+  0%   { transform: translate(0,0) scale(1);   opacity: 1; }
+  100% { transform: translate(var(--sx), var(--sy)) scale(0); opacity: 0; }
+}
+.spark {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 4px; height: 4px;
+  border-radius: 9999px;
+  background: #fde68a;
+  box-shadow: 0 0 6px #fbbf24, 0 0 12px #f59e0b;
+  pointer-events: none;
+  animation: sparkFly 0.5s ease-out forwards;
+}
+
+@keyframes pistonPulse {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+.piston-anim { animation: pistonPulse 0.25s ease-in-out infinite; }
+
 #root {
   min-height: 100vh;
 }

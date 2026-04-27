@@ -1,9 +1,12 @@
+export type GearMaterial = 'steel' | 'titanium' | 'heavy' | 'helical';
+
 export interface Gear {
   id: string;
   x: number;
   y: number;
   teeth: number;
   type: 'input' | 'output' | 'intermediate';
+  material?: GearMaterial;
 }
 
 export interface PlayerState {

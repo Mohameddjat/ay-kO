@@ -315,64 +315,239 @@ class SoundManager {
 
 const sounds = new SoundManager();
 
-const GearIcon = ({ teeth, color, className, rotation = 0 }: { teeth: number, color: string, className?: string, rotation?: number }) => {
-  const points = [];
-  const innerRadius = 30;
-  const outerRadius = 45;
-  const toothCount = teeth;
-  
-  for (let i = 0; i < toothCount * 2; i++) {
-    const angle = (i * Math.PI) / toothCount;
-    const r = i % 2 === 0 ? outerRadius : innerRadius;
-    points.push(`${Math.cos(angle) * r},${Math.sin(angle) * r}`);
+// Material palettes for gears (used by GearIcon and the material picker UI)
+const GEAR_MATERIALS = {
+  steel:    { label: 'Steel',     body: '#cbd5e1', edge: '#475569', highlight: '#f1f5f9', hub: '#94a3b8' },
+  titanium: { label: 'Titanium',  body: '#fde68a', edge: '#a16207', highlight: '#fef9c3', hub: '#facc15' },
+  heavy:    { label: 'Heavy-Duty',body: '#64748b', edge: '#1e293b', highlight: '#94a3b8', hub: '#475569' },
+  helical:  { label: 'Helical',   body: '#67e8f9', edge: '#0e7490', highlight: '#cffafe', hub: '#22d3ee' },
+} as const;
+
+type GearMaterialKey = keyof typeof GEAR_MATERIALS;
+
+const GearIcon = ({
+  teeth,
+  className,
+  material = 'steel',
+  spinning = false,
+  spinReverse = false,
+  spinFast = false,
+  glow = 0,
+  dim = false,
+}: {
+  teeth: number,
+  className?: string,
+  material?: GearMaterialKey,
+  spinning?: boolean,
+  spinReverse?: boolean,
+  spinFast?: boolean,
+  glow?: number,
+  dim?: boolean,
+}) => {
+  // Cap visible teeth so very dense gears still render cleanly inside the cell
+  const N = Math.max(8, Math.min(teeth, 48));
+  const baseR = 38;
+  const toothH = 7;
+  const outerR = baseR + toothH;
+  const innerR = baseR - 4;
+  const hubR = 11;
+  const mat = GEAR_MATERIALS[material];
+
+  // Build trapezoidal teeth around the pitch circle.
+  const halfTooth = (Math.PI / N) * 0.36; // narrow tooth, wider gap
+  const tipShrink = 0.6; // tip is narrower than base for an involute-ish wedge
+  let path = '';
+  for (let i = 0; i < N; i++) {
+    const cAngle = (i * 2 * Math.PI) / N - Math.PI / 2;
+    const a1 = cAngle - halfTooth;
+    const a2 = cAngle - halfTooth * tipShrink;
+    const a3 = cAngle + halfTooth * tipShrink;
+    const a4 = cAngle + halfTooth;
+    const p1 = `${(Math.cos(a1) * baseR).toFixed(2)},${(Math.sin(a1) * baseR).toFixed(2)}`;
+    const p2 = `${(Math.cos(a2) * outerR).toFixed(2)},${(Math.sin(a2) * outerR).toFixed(2)}`;
+    const p3 = `${(Math.cos(a3) * outerR).toFixed(2)},${(Math.sin(a3) * outerR).toFixed(2)}`;
+    const p4 = `${(Math.cos(a4) * baseR).toFixed(2)},${(Math.sin(a4) * baseR).toFixed(2)}`;
+    if (i === 0) path += `M ${p1} L ${p2} L ${p3} L ${p4}`;
+    else path += ` L ${p1} L ${p2} L ${p3} L ${p4}`;
+    const nextAngle = ((i + 1) * 2 * Math.PI) / N - Math.PI / 2 - halfTooth;
+    const np = `${(Math.cos(nextAngle) * baseR).toFixed(2)},${(Math.sin(nextAngle) * baseR).toFixed(2)}`;
+    if (i < N - 1) path += ` A ${baseR} ${baseR} 0 0 1 ${np}`;
   }
-  
+  path += ' Z';
+
+  // Lightening holes around the inner ring
+  const holeCount = Math.min(6, Math.max(4, Math.floor(N / 6)));
+  const holeR = 3.5;
+  const holeRadius = (innerR + hubR) / 2 + 1;
+
+  const matId = `gg-${material}`;
+  const spinClass = spinning
+    ? (spinFast
+        ? (spinReverse ? 'animate-gear-spin-fast-r' : 'animate-gear-spin-fast')
+        : (spinReverse ? 'animate-gear-spin-r' : 'animate-gear-spin'))
+    : '';
+  const opacity = dim ? 0.45 : 1;
+
   return (
-    <svg viewBox="-50 -50 100 100" className={className} style={{ transform: `rotate(${rotation}deg)` }}>
+    <svg viewBox="-50 -50 100 100" className={className} style={{ overflow: 'visible' }}>
       <defs>
-        <radialGradient id="gearGradient" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.2)" />
+        <radialGradient id={matId} cx="35%" cy="35%" r="70%">
+          <stop offset="0%"  stopColor={mat.highlight} />
+          <stop offset="55%" stopColor={mat.body} />
+          <stop offset="100%" stopColor={mat.edge} />
         </radialGradient>
       </defs>
-      <polygon
-        points={points.join(' ')}
-        fill={color}
-        stroke="currentColor"
-        strokeWidth="2"
-        className="transition-all duration-300"
-      />
-      <circle cx="0" cy="0" r="15" fill="url(#gearGradient)" />
-      <circle cx="0" cy="0" r="5" fill="white" />
-      {/* Mechanical details */}
-      <circle cx="0" cy="0" r="25" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="2 4" />
+
+      {/* Heat halo behind the gear when generating heat */}
+      {glow > 0 && (
+        <circle r={outerR + 6} fill={`rgba(239, 68, 68, ${Math.min(0.6, glow * 0.7)})`}
+                style={{ filter: 'blur(4px)' }} />
+      )}
+
+      <g className={spinClass} style={{ opacity }}>
+        {/* Tooth body */}
+        <path d={path} fill={`url(#${matId})`} stroke={mat.edge} strokeWidth="0.9" strokeLinejoin="round" />
+        {/* Inner darker face */}
+        <circle r={innerR} fill={mat.edge} opacity="0.35" />
+        {/* Lightening holes */}
+        {Array.from({ length: holeCount }).map((_, i) => {
+          const a = (i * 2 * Math.PI) / holeCount - Math.PI / 2;
+          return (
+            <circle key={i}
+              cx={(Math.cos(a) * holeRadius).toFixed(2)}
+              cy={(Math.sin(a) * holeRadius).toFixed(2)}
+              r={holeR}
+              fill="#0a0a0a" stroke={mat.edge} strokeWidth="0.4" />
+          );
+        })}
+        {/* Hub bolt-circle */}
+        <circle r={hubR} fill={mat.highlight} stroke={mat.edge} strokeWidth="0.8" />
+        <circle r={hubR * 0.4} fill={mat.edge} />
+        {/* Tiny highlight on top of hub */}
+        <ellipse cx="-3" cy="-3" rx="3" ry="1.5" fill="rgba(255,255,255,0.5)" />
+      </g>
+
+      {/* Heat shimmer overlay (does NOT spin so it stays bright) */}
+      {glow > 0.3 && (
+        <circle r={outerR + 1} fill="none" stroke={`rgba(248, 113, 113, ${glow * 0.8})`} strokeWidth="1.5" />
+      )}
     </svg>
   );
 };
 
+// Detailed V8 engine block (replaces simple Zap icon)
 const EngineVisual = ({ className }: { className?: string }) => (
   <div className={`flex flex-col items-center gap-2 ${className}`}>
     <div className="relative">
-      <div className="absolute -inset-4 bg-blue-500/20 blur-xl rounded-full animate-pulse" />
-      <div className="relative bg-[#1a1a1a] p-4 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-500/10">
-        <Zap className="w-8 h-8 text-blue-400" />
+      <div className="absolute -inset-4 bg-blue-500/25 blur-xl rounded-full animate-pulse" />
+      <div className="relative bg-gradient-to-br from-[#1f2937] to-[#0a0a0a] p-2 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-500/10">
+        <svg viewBox="-44 -32 88 64" className="w-20 h-16">
+          <defs>
+            <linearGradient id="engBlock" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#475569" />
+              <stop offset="100%" stopColor="#1e293b" />
+            </linearGradient>
+          </defs>
+          {/* Engine block */}
+          <rect x="-32" y="-20" width="64" height="40" rx="4" fill="url(#engBlock)" stroke="#0f172a" strokeWidth="1.2" />
+          {/* Cooling fins */}
+          {[-26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26].map(x => (
+            <line key={x} x1={x} y1="-18" x2={x} y2="18" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+          ))}
+          {/* V8 valve covers — two angled banks */}
+          <g transform="translate(0,-12)">
+            <rect x="-26" y="-5" width="52" height="8" rx="2" fill="#1e293b" stroke="#0f172a" />
+            {[-19, -10, 10, 19].map(x => (
+              <g key={x} className="piston-anim" style={{ animationDelay: `${(x + 20) * 0.04}s` }}>
+                <circle cx={x} cy="-5" r="2" fill="#fde68a" />
+                <circle cx={x} cy="-5" r="1" fill="#f59e0b" />
+              </g>
+            ))}
+            <text x="0" y="1" textAnchor="middle" fontSize="4" fontWeight="900" fill="#94a3b8">V8</text>
+          </g>
+          {/* Lower bank shadow */}
+          <rect x="-26" y="6" width="52" height="6" rx="2" fill="#0f172a" />
+          {/* Crank pulley */}
+          <circle cx="-32" cy="0" r="6" fill="#0a0a0a" stroke="#475569" strokeWidth="1" />
+          <circle cx="-32" cy="0" r="3" fill="#f59e0b" />
+          <circle cx="-32" cy="0" r="1" fill="#fde68a" />
+          {/* Exhaust headers (right side) */}
+          <path d="M 32 -10 Q 38 -10 38 -4 L 42 -4" stroke="#475569" strokeWidth="2.5" fill="none" />
+          <path d="M 32 10 Q 38 10 38 4 L 42 4" stroke="#475569" strokeWidth="2.5" fill="none" />
+          <circle cx="42" cy="-4" r="1.5" fill="#0a0a0a" />
+          <circle cx="42" cy="4" r="1.5" fill="#0a0a0a" />
+        </svg>
       </div>
     </div>
     <span className="text-[10px] font-black text-blue-400/60 uppercase tracking-tighter">V8 ENGINE</span>
   </div>
 );
 
-const WheelVisual = ({ className }: { className?: string }) => (
+// Detailed drive wheel with rim, brake disc, tire tread
+const WheelVisual = ({ className, brakeHot = false }: { className?: string, brakeHot?: boolean }) => (
   <div className={`flex flex-col items-center gap-2 ${className}`}>
     <div className="relative">
       <div className="absolute -inset-4 bg-green-500/20 blur-xl rounded-full animate-pulse" />
-      <div className="relative bg-[#1a1a1a] p-4 rounded-2xl border border-green-500/30 shadow-lg shadow-green-500/10">
-        <RotateCcw className="w-8 h-8 text-green-400" />
+      <div className="relative bg-gradient-to-br from-[#1f2937] to-[#0a0a0a] p-2 rounded-2xl border border-green-500/30 shadow-lg shadow-green-500/10">
+        <svg viewBox="-44 -44 88 88" className="w-20 h-20 animate-gear-spin" style={{ animationDuration: '6s' }}>
+          {/* Outer tire */}
+          <circle r="40" fill="#0a0a0a" stroke="#1f2937" strokeWidth="1" />
+          {/* Tread blocks */}
+          {Array.from({ length: 28 }).map((_, i) => {
+            const a = (i / 28) * 2 * Math.PI;
+            const x1 = Math.cos(a) * 34, y1 = Math.sin(a) * 34;
+            const x2 = Math.cos(a) * 40, y2 = Math.sin(a) * 40;
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#374151" strokeWidth="2" />;
+          })}
+          {/* Sidewall ring */}
+          <circle r="33" fill="none" stroke="#1e293b" strokeWidth="1.5" />
+          {/* Alloy rim background */}
+          <circle r="29" fill="#475569" />
+          {/* Brake disc — glows red when brakes are hot */}
+          <circle r="22" fill={brakeHot ? '#dc2626' : '#94a3b8'} opacity="0.85"
+                  style={{ filter: brakeHot ? 'drop-shadow(0 0 6px #ef4444)' : 'none' }} />
+          {Array.from({ length: 8 }).map((_, i) => {
+            const a = (i / 8) * 2 * Math.PI;
+            return <circle key={i} cx={Math.cos(a) * 17} cy={Math.sin(a) * 17} r="1.6" fill="#0a0a0a" />;
+          })}
+          {/* 5 alloy spokes */}
+          {[0, 1, 2, 3, 4].map(i => {
+            const deg = (i / 5) * 360;
+            return (
+              <g key={i} transform={`rotate(${deg})`}>
+                <path d="M -3.5 0 L -2 -26 Q 0 -28 2 -26 L 3.5 0 Z"
+                      fill="#cbd5e1" stroke="#64748b" strokeWidth="0.5" strokeLinejoin="round" />
+              </g>
+            );
+          })}
+          {/* Center hub & lugnuts */}
+          <circle r="7" fill="#1f2937" stroke="#94a3b8" strokeWidth="0.6" />
+          {[0, 72, 144, 216, 288].map(deg => (
+            <circle key={deg} cx={Math.cos(deg * Math.PI / 180) * 4.5} cy={Math.sin(deg * Math.PI / 180) * 4.5} r="1" fill="#94a3b8" />
+          ))}
+          <circle r="2" fill="#fbbf24" />
+        </svg>
       </div>
     </div>
     <span className="text-[10px] font-black text-green-400/60 uppercase tracking-tighter">DRIVE WHEEL</span>
   </div>
 );
+
+// Lightweight burst of sparks rendered when a gear is placed/changed/removed.
+const SparkBurst = ({ x, y }: { x: number, y: number }) => {
+  const sparks = Array.from({ length: 8 }).map((_, i) => {
+    const a = (i / 8) * Math.PI * 2;
+    return { sx: Math.cos(a) * 24, sy: Math.sin(a) * 24, key: i };
+  });
+  return (
+    <div className="pointer-events-none absolute z-[400]" style={{ left: x, top: y }}>
+      {sparks.map(s => (
+        <span key={s.key} className="spark"
+          style={{ ['--sx' as any]: `${s.sx}px`, ['--sy' as any]: `${s.sy}px` }} />
+      ))}
+    </div>
+  );
+};
 
 export default function App() {
   const [roomId, setRoomId] = useState('main-race');
@@ -479,7 +654,44 @@ export default function App() {
   const [showInstructions, setShowInstructions] = useState(true);
   const [connectedGears, setConnectedGears] = useState<string[]>([]);
   const [selectedGearId, setSelectedGearId] = useState<string | null>(null);
-  const [presets, setPresets] = useState<{ name: string, gears: Gear[] }[]>([]);
+  // Named preset slots saved to localStorage. 3 prebuilt builds + an empty Custom slot.
+  const [presets, setPresets] = useState<{ name: string, gears: Gear[] }[]>(() => {
+    const saved = localStorage.getItem('gear_race_presets');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { /* fall through */ }
+    }
+    return [
+      { name: 'Drag', gears: [
+        { id: '0-0', x: 0, y: 0, teeth: 16, type: 'intermediate' },
+        { id: '1-0', x: 1, y: 0, teeth: 24, type: 'intermediate' },
+        { id: '2-0', x: 2, y: 0, teeth: 48, type: 'intermediate' },
+        { id: '3-0', x: 3, y: 0, teeth: 80, type: 'intermediate' },
+        { id: '4-0', x: 4, y: 0, teeth: 96, type: 'intermediate' },
+        { id: '5-0', x: 5, y: 0, teeth: 128, type: 'intermediate' },
+      ]},
+      { name: 'Hill Climb', gears: [
+        { id: '0-0', x: 0, y: 0, teeth: 64, type: 'intermediate' },
+        { id: '1-0', x: 1, y: 0, teeth: 48, type: 'intermediate' },
+        { id: '2-1', x: 2, y: 1, teeth: 32, type: 'intermediate' },
+        { id: '3-1', x: 3, y: 1, teeth: 24, type: 'intermediate' },
+        { id: '4-0', x: 4, y: 0, teeth: 16, type: 'intermediate' },
+        { id: '5-0', x: 5, y: 0, teeth: 16, type: 'intermediate' },
+      ]},
+      { name: 'Endurance', gears: [
+        { id: '0-0', x: 0, y: 0, teeth: 32, type: 'intermediate' },
+        { id: '1-0', x: 1, y: 0, teeth: 32, type: 'intermediate' },
+        { id: '2-0', x: 2, y: 0, teeth: 48, type: 'intermediate' },
+        { id: '4-0', x: 4, y: 0, teeth: 48, type: 'intermediate' },
+        { id: '5-0', x: 5, y: 0, teeth: 64, type: 'intermediate' },
+      ]},
+      { name: 'Custom', gears: [] },
+    ];
+  });
+  // Spark burst trigger (re-renders SparkBurst at given grid position)
+  const [sparkBurst, setSparkBurst] = useState<{ id: number, x: number, y: number } | null>(null);
+  const sparkIdRef = useRef(0);
+  // Hover preview for "what would the ratio become if I picked this teeth count?"
+  const [previewTeeth, setPreviewTeeth] = useState<number | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 400 });
   const [credits, setCredits] = useState(() => {
     const saved = localStorage.getItem('gear_race_credits');
@@ -738,11 +950,16 @@ export default function App() {
     localStorage.setItem('gear_race_upgrades', JSON.stringify(upgrades));
   }, [upgrades]);
 
+  useEffect(() => {
+    localStorage.setItem('gear_race_presets', JSON.stringify(presets));
+  }, [presets]);
+
   const SHOP_ITEMS = [
     { id: 'titanium_gears', name: 'Titanium Gears', description: 'Removes efficiency penalty from gear chains.', price: 500, icon: <Settings className="w-5 h-5" /> },
     { id: 'super_cooler', name: 'Super Cooler', description: 'Reduces engine heat generation by 40%.', price: 300, icon: <Zap className="w-5 h-5" /> },
     { id: 'nitro_system', name: 'Nitro System', description: 'Increases base torque by 25%.', price: 450, icon: <Flame className="w-5 h-5" /> },
     { id: 'aero_chassis', name: 'Aero Chassis', description: 'Reduces air resistance at high speeds.', price: 600, icon: <Wind className="w-5 h-5" /> },
+    { id: 'premium_gears', name: 'Premium Gear Materials', description: 'Unlocks Titanium / Heavy-Duty / Helical gear materials in the assembly.', price: 800, icon: <Settings className="w-5 h-5" /> },
   ];
 
   const hasUpgrade = (id: string) => upgrades.some(u => u.id === id);
@@ -961,7 +1178,40 @@ export default function App() {
     };
   }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser, gameState, isWaiting]);
 
-  // Gear Connectivity Logic (BFS)
+  // Gear Connectivity Logic (BFS) — extracted into pure helpers so the live ratio preview
+  // can also reuse them with a hypothetical gear set.
+  const computeConnectedGears = (gs: Gear[], _cols: number, _rows: number): string[] => {
+    if (gs.length === 0) return [];
+    const gearMap = new Map<string, Gear>(gs.map(g => [g.id, g]));
+    const visited = new Set<string>();
+    const queue: string[] = [];
+    gs.filter(g => g.x === 0).forEach(g => { queue.push(g.id); visited.add(g.id); });
+    while (queue.length > 0) {
+      const cur = gearMap.get(queue.shift()!)!;
+      if (!cur) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (dx === 0 && dy === 0) continue;
+          const nid = `${cur.x + dx}-${cur.y + dy}`;
+          if (gearMap.has(nid) && !visited.has(nid)) {
+            visited.add(nid); queue.push(nid);
+          }
+        }
+      }
+    }
+    return Array.from(visited);
+  };
+
+  const computeRatio = (gs: Gear[], connected: string[]): number => {
+    const visited = new Set(connected);
+    const ends   = gs.filter(g => g.x === GRID_COLS - 1 && visited.has(g.id));
+    const starts = gs.filter(g => g.x === 0 && visited.has(g.id));
+    if (ends.length === 0 || starts.length === 0) return 0;
+    const avgEnd   = ends.reduce((a, g) => a + g.teeth, 0) / ends.length;
+    const avgStart = starts.reduce((a, g) => a + g.teeth, 0) / starts.length;
+    return avgEnd / avgStart;
+  };
+
   useEffect(() => {
     if (gears.length === 0) {
       setGearRatio(0);
@@ -969,52 +1219,11 @@ export default function App() {
       setConnectedGears([]);
       return;
     }
-
-    const gearMap = new Map<string, Gear>(gears.map(g => [g.id, g]));
-    const visited = new Set<string>();
-    const queue: string[] = [];
-
-    // Start with gears in column 0
-    gears.filter(g => g.x === 0).forEach(g => {
-      queue.push(g.id);
-      visited.add(g.id);
-    });
-
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const current = gearMap.get(currentId) as Gear;
-      if (!current) continue;
-
-      // Check neighbors (8 directions)
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          if (dx === 0 && dy === 0) continue;
-          const nx = current.x + dx;
-          const ny = current.y + dy;
-          const neighborId = `${nx}-${ny}`;
-          
-          if (gearMap.has(neighborId) && !visited.has(neighborId)) {
-            visited.add(neighborId);
-            queue.push(neighborId);
-          }
-        }
-      }
-    }
-
-    const connectedList = Array.from(visited);
+    const connectedList = computeConnectedGears(gears, GRID_COLS, GRID_ROWS);
     setConnectedGears(connectedList);
-
-    const reachableEndGears = gears.filter(g => g.x === GRID_COLS - 1 && visited.has(g.id));
-    const startGears = gears.filter(g => g.x === 0 && visited.has(g.id));
-
-    if (reachableEndGears.length > 0) {
-      // Calculate ratio: Average end teeth / Average start teeth
-      const avgEnd = reachableEndGears.reduce((acc, g) => acc + g.teeth, 0) / reachableEndGears.length;
-      const avgStart = startGears.reduce((acc, g) => acc + g.teeth, 0) / startGears.length;
-      
-      // We want: Small start + Large end = High Speed (High Ratio)
-      // Large start + Small end = High Torque (Low Ratio)
-      setGearRatio(avgEnd / avgStart);
+    const ratio = computeRatio(gears, connectedList);
+    if (ratio > 0) {
+      setGearRatio(ratio);
       setIsConnected(true);
     } else {
       setGearRatio(0);
@@ -1079,10 +1288,18 @@ export default function App() {
       const turboTopMult = 1 + (tn.turbo - 3) * 0.07;       // top speed
       const chassisAccelMult = 1 + (3 - tn.chassis) * 0.08; // lighter = more accel
       const chassisSlopeMult = 1 + (tn.chassis - 3) * 0.10; // heavier = less hurt by slope
-      const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (connectedGears.length * 0.02));
+      // Connected gears that use Titanium negate their efficiency penalty (like the upgrade, but per-gear).
+      // Helical gears each give a small top-speed bonus.
+      const connectedGearObjs = gears.filter(g => connectedGears.includes(g.id));
+      const titaniumCount = connectedGearObjs.filter(g => g.material === 'titanium').length;
+      const helicalCount  = connectedGearObjs.filter(g => g.material === 'helical').length;
+      const heavyCount    = connectedGearObjs.filter(g => g.material === 'heavy').length;
+      const effectivePenaltyCount = Math.max(0, connectedGears.length - titaniumCount);
+      const efficiency = hasUpgrade('titanium_gears') ? 1 : Math.max(0.5, 1 - (effectivePenaltyCount * 0.02));
       const gboxMult = gearboxRatiosRef.current[currentGearRef.current - 1] ?? 1;
       const effectiveRatio = Math.max(0.05, gearRatio * gboxMult);
-      let topSpeed = (200 + (effectiveRatio * 300 * efficiency)) * turboTopMult;
+      const helicalTopMult = 1 + helicalCount * 0.10; // +10% top speed per helical gear
+      let topSpeed = (200 + (effectiveRatio * 300 * efficiency)) * turboTopMult * helicalTopMult;
       let baseTorque = 150 * efficiency * (hasUpgrade('nitro_system') ? 1.25 : 1);
       const currentTorque = effectiveRatio > 0 ? baseTorque / Math.max(0.3, Math.pow(effectiveRatio, 0.7)) : 0;
       let acceleration = currentTorque * chassisAccelMult;
@@ -1142,7 +1359,9 @@ export default function App() {
       const coolDecay = 6 * (1 + (tn.cooling - 3) * 0.25); // off-throttle cool-down (slightly faster)
       // RPM proxy — high when speed is high relative to available torque.
       // currentTorque ~ baseTorque / ratio^0.7; higher ratio (lower torque) → larger rpmHeat.
-      const rpmHeat = (localSpeed / Math.max(20, currentTorque)) * 1.4;
+      // Heavy-Duty gears reduce gear-related heat by 30% per gear (cap at -75%).
+      const heavyHeatMult = Math.max(0.25, 1 - heavyCount * 0.30);
+      const rpmHeat = (localSpeed / Math.max(20, currentTorque)) * 1.4 * heavyHeatMult;
       if (activeAcceleration) {
         const slopeHeat = Math.max(0, slope) * 14; // uphill burst, slightly softer
         const heatGen = (rpmHeat + slopeHeat + overRev) * coolMult;
@@ -1977,6 +2196,15 @@ export default function App() {
     };
   }, [gameState, canvasSize, gearRatio]);
 
+  // Trigger a sparks burst at the given grid cell (gear coordinates).
+  // We translate grid -> approximate pixel offset based on the layout used in the garage canvas.
+  const triggerSparks = (gx: number, gy: number) => {
+    const cellW = 100, cellH = 100;
+    sparkIdRef.current += 1;
+    setSparkBurst({ id: sparkIdRef.current, x: gx * cellW + cellW / 2, y: gy * cellH + cellH / 2 });
+    window.setTimeout(() => setSparkBurst(curr => (curr && curr.id === sparkIdRef.current) ? null : curr), 600);
+  };
+
   const addGear = (x: number, y: number) => {
     sounds.init();
     audioBus.init();
@@ -1987,19 +2215,33 @@ export default function App() {
       // If clicking an existing gear, open the selection menu
       setSelectedGearId(selectedGearId === id ? null : id);
     } else {
-      setGears([...gears, { id, x, y, teeth: 16, type: 'intermediate' }]);
+      setGears([...gears, { id, x, y, teeth: 16, type: 'intermediate', material: 'steel' }]);
       setSelectedGearId(id); // Open menu for the new gear
+      triggerSparks(x, y);
     }
   };
 
   const setTeeth = (id: string, teeth: number) => {
+    audioBus.playSfx('click');
+    const g = gears.find(gg => gg.id === id);
     setGears(gears.map(g => g.id === id ? { ...g, teeth } : g));
     setSelectedGearId(null);
+    if (g) triggerSparks(g.x, g.y);
+  };
+
+  const setGearMaterial = (id: string, material: GearMaterialKey) => {
+    audioBus.playSfx('click');
+    const g = gears.find(gg => gg.id === id);
+    setGears(gears.map(gg => gg.id === id ? { ...gg, material } : gg));
+    if (g) triggerSparks(g.x, g.y);
   };
 
   const removeGear = (id: string) => {
-    setGears(gears.filter(g => g.id !== id));
+    audioBus.playSfx('click');
+    const g = gears.find(gg => gg.id === id);
+    setGears(gears.filter(gg => gg.id !== id));
     setSelectedGearId(null);
+    if (g) triggerSparks(g.x, g.y);
   };
 
   return (
@@ -3157,6 +3399,11 @@ export default function App() {
                         style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)` }}
                       >
                         <div className="absolute inset-0 grayscale scanline pointer-events-none opacity-20" />
+                        {sparkBurst && (
+                          <div key={sparkBurst.id} className="contents">
+                            <SparkBurst x={sparkBurst.x} y={sparkBurst.y} />
+                          </div>
+                        )}
                       {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => {
                         const x = i % GRID_COLS;
                         const y = Math.floor(i / GRID_COLS);
@@ -3176,16 +3423,30 @@ export default function App() {
                                   : 'bg-white/5 border-white/5 hover:bg-white/10'
                               } ${isEngine ? 'border-l-4 border-blue-500/50' : ''} ${isWheel ? 'border-r-4 border-green-500/50' : ''}`}
                             >
-                              {gear && (
-                                <div className="relative flex items-center justify-center w-full h-full p-1">
-                                  <GearIcon 
-                                    teeth={Math.min(gear.teeth, 32)} 
-                                    color={connectedGears.includes(gear.id) ? '#fff' : 'rgba(255,255,255,0.2)'} 
-                                    className="w-full h-full"
-                                  />
-                                  <span className="absolute text-[9px] font-black text-white bg-black/80 px-1 rounded-sm">{gear.teeth}T</span>
-                                </div>
-                              )}
+                              {gear && (() => {
+                                const isConnected = connectedGears.includes(gear.id);
+                                // Heat estimate per gear: scales with current effective ratio (proxy for RPM at this stage).
+                                const ratioHeat = Math.min(1, Math.max(0, (gearRatio - 0.6) / 2.5));
+                                const glow = isConnected ? ratioHeat : 0;
+                                // Alternate spin direction along the chain so meshing looks correct.
+                                const idx = connectedGears.indexOf(gear.id);
+                                const reverse = idx >= 0 ? idx % 2 === 1 : (gear.x + gear.y) % 2 === 1;
+                                return (
+                                  <div className="relative flex items-center justify-center w-full h-full p-1">
+                                    <GearIcon
+                                      teeth={gear.teeth}
+                                      material={(gear.material ?? 'steel') as GearMaterialKey}
+                                      spinning={isConnected}
+                                      spinReverse={reverse}
+                                      spinFast={glow > 0.5}
+                                      glow={glow}
+                                      dim={!isConnected}
+                                      className="w-full h-full"
+                                    />
+                                    <span className="absolute text-[9px] font-black text-white bg-black/80 px-1 rounded-sm">{gear.teeth}T</span>
+                                  </div>
+                                );
+                              })()}
                               {!gear && (isEngine || isWheel) && (
                                 <div className={`w-1.5 h-1.5 rounded-full ${isEngine ? 'bg-blue-500' : 'bg-green-500'} opacity-30`} />
                               )}
@@ -3198,17 +3459,45 @@ export default function App() {
                                   initial={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
                                   animate={{ opacity: 1, scale: 1, y: 0 }}
                                   exit={{ opacity: 0, scale: 0.8, y: y < 2 ? 10 : -10 }}
-                                  className={`absolute z-[500] ${y < 2 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-neutral-900 border border-white/20 rounded-2xl p-4 shadow-2xl min-w-[200px]`}
+                                  className={`absolute z-[500] ${y < 2 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 -translate-x-1/2 bg-neutral-900 border border-white/20 rounded-2xl p-4 shadow-2xl min-w-[240px]`}
+                                  onMouseLeave={() => setPreviewTeeth(null)}
                                 >
                                   <div className="flex justify-between items-center mb-3">
                                     <p className="text-[10px] font-black text-white/40 uppercase tracking-widest italic">Tooth Count</p>
                                     <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedGearId(null)} />
                                   </div>
+                                  {/* Live ratio preview — shows what the chain ratio would become */}
+                                  {(() => {
+                                    const previewGears = previewTeeth != null
+                                      ? gears.map(g => g.id === gear.id ? { ...g, teeth: previewTeeth } : g)
+                                      : gears;
+                                    const conn = computeConnectedGears(previewGears, GRID_COLS, GRID_ROWS);
+                                    const previewRatio = computeRatio(previewGears, conn);
+                                    const isPreview = previewTeeth != null && previewTeeth !== gear.teeth;
+                                    return (
+                                      <div className="mb-3 px-2 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between gap-2">
+                                        <span className="text-[9px] text-white/40 uppercase tracking-widest font-black">Ratio</span>
+                                        <span className="font-mono font-black text-xs">
+                                          <span className={isPreview ? 'text-white/40' : 'text-rose-400'}>{gearRatio.toFixed(2)}</span>
+                                          {isPreview && (
+                                            <>
+                                              <span className="text-white/30 mx-1">→</span>
+                                              <span className={previewRatio > gearRatio ? 'text-emerald-400' : 'text-amber-400'}>
+                                                {previewRatio.toFixed(2)}
+                                              </span>
+                                            </>
+                                          )}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                   <div className="grid grid-cols-4 gap-1.5">
                                     {GEAR_TYPES.map(t => (
                                       <button
                                         key={t}
-                                        onClick={(e) => { e.stopPropagation(); setTeeth(gear.id, t); }}
+                                        onMouseEnter={() => setPreviewTeeth(t)}
+                                        onMouseLeave={() => setPreviewTeeth(null)}
+                                        onClick={(e) => { e.stopPropagation(); setPreviewTeeth(null); setTeeth(gear.id, t); }}
                                         className={`px-1 py-2 rounded-lg text-[10px] font-black transition-all ${
                                           gear.teeth === t ? 'bg-rose-600 text-white scale-110' : 'bg-white/5 hover:bg-white/10 text-white/60'
                                         }`}
@@ -3216,6 +3505,36 @@ export default function App() {
                                         {t}T
                                       </button>
                                     ))}
+                                  </div>
+                                  {/* Material picker — only unlocked when premium_gears purchased */}
+                                  <div className="mt-4 pt-3 border-t border-white/10">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="text-[10px] font-black text-white/40 uppercase tracking-widest italic">Material</p>
+                                      {!hasUpgrade('premium_gears') && (
+                                        <span className="text-[8px] font-black text-amber-400/70 uppercase tracking-widest">Locked · Shop</span>
+                                      )}
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-1.5">
+                                      {(Object.keys(GEAR_MATERIALS) as GearMaterialKey[]).map(mk => {
+                                        const enabled = mk === 'steel' || hasUpgrade('premium_gears');
+                                        const active = (gear.material ?? 'steel') === mk;
+                                        const m = GEAR_MATERIALS[mk];
+                                        return (
+                                          <button
+                                            key={mk}
+                                            disabled={!enabled}
+                                            onClick={(e) => { e.stopPropagation(); if (enabled) setGearMaterial(gear.id, mk); }}
+                                            title={m.label}
+                                            className={`relative px-1 py-1.5 rounded-lg text-[8px] font-black transition-all uppercase tracking-widest border ${
+                                              active ? 'border-white/60 scale-105' : 'border-white/5 hover:border-white/20'
+                                            } ${enabled ? '' : 'opacity-30 cursor-not-allowed'}`}
+                                            style={{ background: `linear-gradient(135deg, ${m.body} 0%, ${m.edge} 100%)`, color: '#0a0a0a' }}
+                                          >
+                                            {m.label.slice(0, 4)}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                   <div className="mt-4 pt-3 border-t border-white/10">
                                     <button
@@ -3252,17 +3571,38 @@ export default function App() {
                         {gearRatio > 0 ? ((150 * Math.max(0.5, 1 - (connectedGears.length * 0.02)) * (hasUpgrade('nitro_system') ? 1.25 : 1)) / Math.max(0.3, Math.pow(gearRatio, 0.7))).toFixed(0) : 0}
                       </p>
                     </div>
-                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10 col-span-2 flex items-center gap-4">
-                      <div className="flex-1">
-                        <p className="text-[10px] text-white/40 uppercase font-black mb-1 italic">Setup Presets</p>
-                        <div className="flex gap-2">
-                           {presets.map((p, idx) => (
-                              <button key={idx} onClick={() => setGears(p.gears)} className="px-3 py-1 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-black uppercase">
-                                {p.name}
-                              </button>
-                           ))}
-                           <button onClick={() => {const n=prompt('Preset name:'); if(n) setPresets([...presets, {name:n, gears:[...gears]}])}} className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg text-[10px] font-black uppercase">Save</button>
-                        </div>
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/10 col-span-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] text-white/40 uppercase font-black italic">Setup Presets</p>
+                        <span className="text-[9px] text-white/30 italic">Click to load · Save overwrites slot</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {presets.map((p, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => { audioBus.playSfx('click'); setGears(p.gears.map(g => ({ ...g }))); }}
+                              disabled={p.gears.length === 0}
+                              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all text-left flex items-center justify-between ${
+                                p.gears.length === 0
+                                  ? 'bg-white/3 border-white/5 text-white/20 cursor-not-allowed'
+                                  : 'bg-rose-600/20 text-rose-400 border-rose-500/30 hover:bg-rose-600/30'
+                              }`}
+                            >
+                              <span>{p.name}</span>
+                              <span className="text-[9px] opacity-60 ml-2">{p.gears.length}g</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                audioBus.playSfx('click');
+                                setPresets(presets.map((pp, j) => j === idx ? { ...pp, gears: gears.map(g => ({ ...g })) } : pp));
+                              }}
+                              title={`Save current build into "${p.name}"`}
+                              className="px-2 py-1.5 bg-white/5 hover:bg-white/15 border border-white/10 rounded-lg text-[9px] font-black uppercase tracking-widest text-white/60"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
