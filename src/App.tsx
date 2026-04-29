@@ -42,7 +42,8 @@ import {
   Gauge,
   Disc,
   Sparkles,
-  Battery
+  Battery,
+  Wrench
 } from 'lucide-react';
 import { Gear, PlayerState, GameRoom } from './types';
 import { audioBus } from './lib/audio';
@@ -2641,9 +2642,11 @@ export default function App() {
               <div className="flex gap-4 items-center">
                 <button 
                   onClick={() => setIsGarageOpen(!isGarageOpen)}
+                  aria-label="Open Garage"
+                  title="Garage"
                   className={`p-2 rounded-full transition-all border ${isGarageOpen ? 'bg-rose-600 border-rose-400 shadow-lg shadow-rose-600/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 >
-                  <Settings className={`w-4 h-4 ${isGarageOpen ? 'animate-spin-slow' : ''}`} />
+                  <Wrench className={`w-4 h-4 ${isGarageOpen ? 'animate-pulse text-white' : ''}`} />
                 </button>
                 {gameState === 'racing' && (
                   <button 
@@ -3235,7 +3238,7 @@ export default function App() {
                             onClick={() => setIsGarageOpen(true)}
                             className="flex items-center gap-3 bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl border border-white/10 backdrop-blur-xl transition-all group"
                           >
-                            <Settings className="w-4 h-4 text-rose-500 group-hover:animate-spin-slow" />
+                            <Wrench className="w-4 h-4 text-rose-500 group-hover:rotate-12 transition-transform" />
                             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white italic">Open Assembly Garage</span>
                           </button>
                           <p className="text-[10px] text-white/20 uppercase tracking-[0.3em] font-black">All systems operational</p>
