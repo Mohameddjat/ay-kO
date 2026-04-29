@@ -50,10 +50,17 @@ body {
   from { transform: rotate(0deg); }
   to   { transform: rotate(-360deg); }
 }
-.animate-gear-spin   { animation: gearSpin 4s linear infinite; transform-origin: center; }
-.animate-gear-spin-r { animation: gearSpinReverse 4s linear infinite; transform-origin: center; }
-.animate-gear-spin-fast   { animation: gearSpin 2s linear infinite; transform-origin: center; }
-.animate-gear-spin-fast-r { animation: gearSpinReverse 2s linear infinite; transform-origin: center; }
+.animate-gear-spin,
+.animate-gear-spin-r,
+.animate-gear-spin-fast,
+.animate-gear-spin-fast-r {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.animate-gear-spin        { animation: gearSpin 4s linear infinite; }
+.animate-gear-spin-r      { animation: gearSpinReverse 4s linear infinite; }
+.animate-gear-spin-fast   { animation: gearSpin 2s linear infinite; }
+.animate-gear-spin-fast-r { animation: gearSpinReverse 2s linear infinite; }
 
 @keyframes sparkFly {
   0%   { transform: translate(0,0) scale(1);   opacity: 1; }

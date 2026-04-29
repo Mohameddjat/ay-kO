@@ -35,7 +35,14 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  X
+  X,
+  Shield,
+  Magnet,
+  Rocket,
+  Gauge,
+  Disc,
+  Sparkles,
+  Battery
 } from 'lucide-react';
 import { Gear, PlayerState, GameRoom } from './types';
 import { audioBus } from './lib/audio';
@@ -331,7 +338,7 @@ const GearIcon = ({
   material = 'steel',
   spinning = false,
   spinReverse = false,
-  spinFast = false,
+  spinDuration,
   glow = 0,
   dim = false,
 }: {
@@ -340,7 +347,8 @@ const GearIcon = ({
   material?: GearMaterialKey,
   spinning?: boolean,
   spinReverse?: boolean,
-  spinFast?: boolean,
+  /** Seconds per full revolution. Defaults to teeth/20 (bigger gears spin slower). */
+  spinDuration?: number,
   glow?: number,
   dim?: boolean,
 }) => {
@@ -382,10 +390,14 @@ const GearIcon = ({
 
   const matId = `gg-${material}`;
   const spinClass = spinning
-    ? (spinFast
-        ? (spinReverse ? 'animate-gear-spin-fast-r' : 'animate-gear-spin-fast')
-        : (spinReverse ? 'animate-gear-spin-r' : 'animate-gear-spin'))
+    ? (spinReverse ? 'animate-gear-spin-r' : 'animate-gear-spin')
     : '';
+  // Larger gears (more teeth) spin slower — matches the angular-velocity rule
+  // ω₂ = ω₁ · (T₁ / T₂). Spec: spinDuration = teeth / 20 (seconds per revolution).
+  const dur = spinDuration ?? teeth / 20;
+  const spinStyle: React.CSSProperties | undefined = spinning
+    ? { animationDuration: `${dur}s` }
+    : undefined;
   const opacity = dim ? 0.45 : 1;
 
   return (
@@ -404,7 +416,7 @@ const GearIcon = ({
                 style={{ filter: 'blur(4px)' }} />
       )}
 
-      <g className={spinClass} style={{ opacity }}>
+      <g className={spinClass} style={{ opacity, ...(spinStyle ?? {}) }}>
         {/* Tooth body */}
         <path d={path} fill={`url(#${matId})`} stroke={mat.edge} strokeWidth="0.9" strokeLinejoin="round" />
         {/* Inner darker face */}
@@ -653,6 +665,8 @@ export default function App() {
   const [distance, setDistance] = useState(0);
   const [showInstructions, setShowInstructions] = useState(true);
   const [connectedGears, setConnectedGears] = useState<string[]>([]);
+  // Per-gear parity from the BFS-tree — drives correct alternating spin direction.
+  const [gearParity, setGearParity] = useState<Map<string, 0 | 1>>(new Map());
   const [selectedGearId, setSelectedGearId] = useState<string | null>(null);
   // Named preset slots saved to localStorage. 3 prebuilt builds + an empty Custom slot.
   const [presets, setPresets] = useState<{ name: string, gears: Gear[] }[]>(() => {
@@ -845,9 +859,11 @@ export default function App() {
   };
 
   const claimMissionReward = (id: string) => {
+    // Lucky Charm boosts mission payouts by 25%.
+    const luckyMult = hasUpgrade('lucky_charm') ? 1.25 : 1;
     setMissions(prev => prev.map(m => {
       if (m.id === id && m.completed && !m.claimed) {
-        addCredits(m.reward);
+        addCredits(Math.round(m.reward * luckyMult));
         sounds.playCoin();
         audioBus.playSfx('coin');
         return { ...m, claimed: true };
@@ -955,11 +971,20 @@ export default function App() {
   }, [presets]);
 
   const SHOP_ITEMS = [
-    { id: 'titanium_gears', name: 'Titanium Gears', description: 'Removes efficiency penalty from gear chains.', price: 500, icon: <Settings className="w-5 h-5" /> },
-    { id: 'super_cooler', name: 'Super Cooler', description: 'Reduces engine heat generation by 40%.', price: 300, icon: <Zap className="w-5 h-5" /> },
-    { id: 'nitro_system', name: 'Nitro System', description: 'Increases base torque by 25%.', price: 450, icon: <Flame className="w-5 h-5" /> },
-    { id: 'aero_chassis', name: 'Aero Chassis', description: 'Reduces air resistance at high speeds.', price: 600, icon: <Wind className="w-5 h-5" /> },
-    { id: 'premium_gears', name: 'Premium Gear Materials', description: 'Unlocks Titanium / Heavy-Duty / Helical gear materials in the assembly.', price: 800, icon: <Settings className="w-5 h-5" /> },
+    { id: 'titanium_gears',     name: 'Titanium Gears',           description: 'Removes efficiency penalty from gear chains.',                price: 500, icon: <Settings className="w-5 h-5" /> },
+    { id: 'super_cooler',       name: 'Super Cooler',             description: 'Reduces engine heat generation by 40%.',                      price: 300, icon: <Zap className="w-5 h-5" /> },
+    { id: 'nitro_system',       name: 'Nitro System',             description: 'Increases base torque by 25%.',                               price: 450, icon: <Flame className="w-5 h-5" /> },
+    { id: 'aero_chassis',       name: 'Aero Chassis',             description: 'Reduces air resistance at high speeds.',                      price: 600, icon: <Wind className="w-5 h-5" /> },
+    { id: 'premium_gears',      name: 'Premium Gear Materials',   description: 'Unlocks Titanium / Heavy-Duty / Helical gear materials.',     price: 800, icon: <Settings className="w-5 h-5" /> },
+    { id: 'magnetic_tires',     name: 'Magnetic Tires',           description: '+50% lane-change responsiveness.',                            price: 350, icon: <Magnet className="w-5 h-5" /> },
+    { id: 'carbon_brakes',      name: 'Carbon Brakes',            description: 'Brake heat ×0.5 — brake harder, longer.',                     price: 400, icon: <Disc className="w-5 h-5" /> },
+    { id: 'heat_shield',        name: 'Heat Shield',              description: 'Engine overheat threshold raised from 90°C to 100°C.',        price: 550, icon: <Shield className="w-5 h-5" /> },
+    { id: 'reserve_tank',       name: 'Reserve Tank',             description: 'Near-Miss boost duration ×1.6.',                              price: 500, icon: <Battery className="w-5 h-5" /> },
+    { id: 'reinforced_bumper',  name: 'Reinforced Bumper',        description: 'Crash speed-loss & heat damage halved.',                      price: 400, icon: <Shield className="w-5 h-5" /> },
+    { id: 'coin_magnet',        name: 'Coin Magnet',              description: 'Race finish reward ×1.5.',                                    price: 700, icon: <Coins className="w-5 h-5" /> },
+    { id: 'quick_start',        name: 'Quick Start',              description: 'Free 2.5s boost the moment the race begins.',                 price: 450, icon: <Rocket className="w-5 h-5" /> },
+    { id: 'precision_intake',   name: 'Precision Intake',         description: 'Top speed ×1.08.',                                            price: 650, icon: <Gauge className="w-5 h-5" /> },
+    { id: 'lucky_charm',        name: 'Lucky Charm',              description: 'Mission rewards ×1.25.',                                      price: 350, icon: <Sparkles className="w-5 h-5" /> },
   ];
 
   const hasUpgrade = (id: string) => upgrades.some(u => u.id === id);
@@ -1178,32 +1203,44 @@ export default function App() {
     };
   }, [roomId, gameMode, multiRoomConfirmed, auth.currentUser, gameState, isWaiting]);
 
-  // Gear Connectivity Logic (BFS) — extracted into pure helpers so the live ratio preview
-  // can also reuse them with a hypothetical gear set.
-  const computeConnectedGears = (gs: Gear[], _cols: number, _rows: number): string[] => {
-    if (gs.length === 0) return [];
+  // Gear Connectivity Logic (BFS-tree).
+  // Returns the set of connected gear ids AND a parity map (0 = "input phase", 1 = "output phase")
+  // assigned by tree level so neighboring meshing gears always have opposite parity.
+  // That way the visual rotation directions actually look like meshed gears, not random spinners.
+  const computeConnectedGears = (gs: Gear[], _cols: number, _rows: number): { ids: Set<string>, parity: Map<string, 0 | 1> } => {
+    const ids = new Set<string>();
+    const parity = new Map<string, 0 | 1>();
+    if (gs.length === 0) return { ids, parity };
     const gearMap = new Map<string, Gear>(gs.map(g => [g.id, g]));
-    const visited = new Set<string>();
     const queue: string[] = [];
-    gs.filter(g => g.x === 0).forEach(g => { queue.push(g.id); visited.add(g.id); });
+    gs.filter(g => g.x === 0).forEach(g => {
+      queue.push(g.id);
+      ids.add(g.id);
+      parity.set(g.id, 0); // input column gears are the "drivers" (parity 0)
+    });
     while (queue.length > 0) {
-      const cur = gearMap.get(queue.shift()!)!;
+      const curId = queue.shift()!;
+      const cur = gearMap.get(curId);
       if (!cur) continue;
+      const curPar = parity.get(curId) ?? 0;
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           if (dx === 0 && dy === 0) continue;
           const nid = `${cur.x + dx}-${cur.y + dy}`;
-          if (gearMap.has(nid) && !visited.has(nid)) {
-            visited.add(nid); queue.push(nid);
+          if (gearMap.has(nid) && !ids.has(nid)) {
+            ids.add(nid);
+            // BFS-tree: meshing neighbor flips parity → opposite spin direction.
+            parity.set(nid, curPar === 0 ? 1 : 0);
+            queue.push(nid);
           }
         }
       }
     }
-    return Array.from(visited);
+    return { ids, parity };
   };
 
-  const computeRatio = (gs: Gear[], connected: string[]): number => {
-    const visited = new Set(connected);
+  const computeRatio = (gs: Gear[], connected: string[] | Set<string>): number => {
+    const visited = connected instanceof Set ? connected : new Set(connected);
     const ends   = gs.filter(g => g.x === GRID_COLS - 1 && visited.has(g.id));
     const starts = gs.filter(g => g.x === 0 && visited.has(g.id));
     if (ends.length === 0 || starts.length === 0) return 0;
@@ -1217,11 +1254,14 @@ export default function App() {
       setGearRatio(0);
       setIsConnected(false);
       setConnectedGears([]);
+      setGearParity(new Map());
       return;
     }
-    const connectedList = computeConnectedGears(gears, GRID_COLS, GRID_ROWS);
+    const { ids, parity } = computeConnectedGears(gears, GRID_COLS, GRID_ROWS);
+    const connectedList = Array.from(ids);
     setConnectedGears(connectedList);
-    const ratio = computeRatio(gears, connectedList);
+    setGearParity(parity);
+    const ratio = computeRatio(gears, ids);
     if (ratio > 0) {
       setGearRatio(ratio);
       setIsConnected(true);
@@ -1258,7 +1298,12 @@ export default function App() {
     let localObstacles: { id: string, lane: number, z: number, type: string, processed?: boolean, oldLane?: number }[] = [];
     let localEngineTemp = engineTemp;
     let screenShake = 0;
-    let localBoostTimer = 0;
+    // Quick Start upgrade gives the player a free 2.5s boost the moment racing begins.
+    let localBoostTimer = hasUpgrade('quick_start') ? 2.5 : 0;
+    if (localBoostTimer > 0) {
+      setBoostTime(localBoostTimer);
+      setLastBoostType('QUICK START');
+    }
     let nearMissText: { text: string, x: number, y: number, opacity: number } | null = null;
     
     const canvas = document.createElement('canvas');
@@ -1299,7 +1344,8 @@ export default function App() {
       const gboxMult = gearboxRatiosRef.current[currentGearRef.current - 1] ?? 1;
       const effectiveRatio = Math.max(0.05, gearRatio * gboxMult);
       const helicalTopMult = 1 + helicalCount * 0.10; // +10% top speed per helical gear
-      let topSpeed = (200 + (effectiveRatio * 300 * efficiency)) * turboTopMult * helicalTopMult;
+      const intakeMult = hasUpgrade('precision_intake') ? 1.08 : 1; // Precision Intake → +8% top speed
+      let topSpeed = (200 + (effectiveRatio * 300 * efficiency)) * turboTopMult * helicalTopMult * intakeMult;
       let baseTorque = 150 * efficiency * (hasUpgrade('nitro_system') ? 1.25 : 1);
       const currentTorque = effectiveRatio > 0 ? baseTorque / Math.max(0.3, Math.pow(effectiveRatio, 0.7)) : 0;
       let acceleration = currentTorque * chassisAccelMult;
@@ -1315,7 +1361,8 @@ export default function App() {
         setBoostTime(localBoostTimer);
       }
 
-      const drag = 0.5; // Air resistance
+      // Aero Chassis cuts air resistance ~40%.
+      const drag = 0.5 * (hasUpgrade('aero_chassis') ? 0.6 : 1);
       const friction = 20; // Ground friction
 
       // Brake power scales with brake tuning (level 1 = 70%, level 5 = 130%).
@@ -1344,7 +1391,8 @@ export default function App() {
       updateMissionProgress('distance', localSpeed * dt);
 
       // Lane interpolation — better tires = sharper steering response.
-      const tireResponse = 10 * (1 + (tn.tires - 3) * 0.15);
+      // Magnetic Tires upgrade adds another +50% on top.
+      const tireResponse = 10 * (1 + (tn.tires - 3) * 0.15) * (hasUpgrade('magnetic_tires') ? 1.5 : 1);
       const diff = targetLaneRef.current - localPlayerLane;
       if (Math.abs(diff) < 0.01) localPlayerLane = targetLaneRef.current;
       else localPlayerLane += diff * tireResponse * dt;
@@ -1374,7 +1422,8 @@ export default function App() {
       setEngineTemp(localEngineTemp);
 
       // Brake heat: better brakes shed less heat per unit work but apply harder.
-      const brakeHeatMult = 1 - (tn.brakes - 3) * 0.10;
+      // Carbon Brakes upgrade halves brake heat on top of tuning.
+      const brakeHeatMult = (1 - (tn.brakes - 3) * 0.10) * (hasUpgrade('carbon_brakes') ? 0.5 : 1);
       if (brake) {
         const downhillBoost = Math.max(0, -slope) * 60;
         setBrakeTemp(prev => Math.min(100, prev + (20 + downhillBoost) * brakeHeatMult * dt));
@@ -1382,7 +1431,9 @@ export default function App() {
         setBrakeTemp(prev => Math.max(20, prev - 10 * dt));
       }
 
-      if (localEngineTemp >= 90) {
+      // Heat Shield upgrade pushes the explode threshold from 90°C → 100°C.
+      const overheatThreshold = hasUpgrade('heat_shield') ? 100 : 90;
+      if (localEngineTemp >= overheatThreshold) {
         setGameState('exploded');
         if (gameMode === 'multi' && auth.currentUser) {
           // Just update our own state, the winner's listener or common room listener will handle the rest
@@ -1396,8 +1447,9 @@ export default function App() {
       if (localDistance >= TRACK_LENGTH) {
         setGameState('finished');
         
-        // Rewards and Missions
-        const reward = gameMode === 'multi' ? 300 : 100;
+        // Rewards and Missions — Coin Magnet boosts the finish payout 50%.
+        const baseReward = gameMode === 'multi' ? 300 : 100;
+        const reward = Math.round(baseReward * (hasUpgrade('coin_magnet') ? 1.5 : 1));
         addCredits(reward);
         setTotalWins(w => w + 1);
         updateMissionProgress('win', 1, true);
@@ -1438,8 +1490,12 @@ export default function App() {
         if (relativeZ < 50 && relativeZ > -50 && Math.abs(obs.lane - targetLaneRef.current) < 0.5) {
           // Better tires soften the crash (less heat, less speed lost).
           const grip = 1 + (tn.tires - 3) * 0.15;
-          localEngineTemp += 15 / grip;
-          localSpeed *= Math.min(0.7, 0.4 * grip); // less speed lost with better tires
+          // Reinforced Bumper halves both the heat damage and the speed lost.
+          const bumperMult = hasUpgrade('reinforced_bumper') ? 0.5 : 1;
+          localEngineTemp += (15 / grip) * bumperMult;
+          // Speed retention: with bumper, lerp halfway back to the pre-crash speed.
+          const crashedSpeed = localSpeed * Math.min(0.7, 0.4 * grip);
+          localSpeed = crashedSpeed + (localSpeed - crashedSpeed) * (1 - bumperMult);
           screenShake = 20; // Trigger screen shake
           localBoostTimer = 0; // Cancel boost on hit
           sounds.playCrash();
@@ -1465,7 +1521,9 @@ export default function App() {
             if (boost > 0) {
               // Turbo tuning extends boost duration (level 1 = 80%, level 5 = 130%).
               const turboDur = 1 + (tn.turbo - 3) * 0.12;
-              boost *= turboDur;
+              // Reserve Tank stretches near-miss boosts ×1.6.
+              const reserveDur = hasUpgrade('reserve_tank') ? 1.6 : 1;
+              boost *= turboDur * reserveDur;
               localBoostTimer = Math.max(localBoostTimer, boost); // Calculate the latest best boost, don't stack
               setBoostTime(localBoostTimer);
               setLastBoostType('NEAR MISS');
@@ -1670,6 +1728,117 @@ export default function App() {
       ctx.lineTo(getX(1.8, 1), h);
       ctx.closePath();
       ctx.fill();
+
+      // ─── Procedural roadside scenery ───────────────────────────────────────
+      // Deterministic per-bucket placement so the world feels stable as the
+      // camera moves; depth-sorted far-first so closer items paint on top.
+      {
+        type SceneryKind = 'tree_pine' | 'tree_round' | 'rock' | 'billboard';
+        type Scenery = { z: number; lane: number; kind: SceneryKind; seed: number };
+        const BUCKET = 70;
+        const VIEW_FAR = 2500;
+        const hash = (n: number) => {
+          let x = (n | 0) ^ 0x9e3779b9;
+          x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+          x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+          return ((x ^ (x >>> 16)) >>> 0) / 4294967295;
+        };
+        const sceneryItems: Scenery[] = [];
+        const startBucket = Math.floor(localDistance / BUCKET);
+        const endBucket = Math.floor((localDistance + VIEW_FAR) / BUCKET);
+        for (let b = startBucket; b <= endBucket; b++) {
+          for (const side of [-1, 1] as const) {
+            const r0 = hash(b * 131 + side * 7);
+            if (r0 < 0.15) continue;
+            const count = r0 < 0.55 ? 1 : r0 < 0.85 ? 2 : 3;
+            for (let i = 0; i < count; i++) {
+              const r1 = hash(b * 131 + side * 7 + i * 11 + 1);
+              const r2 = hash(b * 131 + side * 7 + i * 13 + 2);
+              const r3 = hash(b * 131 + side * 7 + i * 17 + 3);
+              const z = b * BUCKET + r1 * BUCKET;
+              const offset = 2.15 + r2 * 1.5; // ±2.15..±3.65 → just outside the rumble strips
+              const lane = side * offset;
+              let kind: SceneryKind;
+              if (r3 < 0.45) kind = 'tree_pine';
+              else if (r3 < 0.75) kind = 'tree_round';
+              else if (r3 < 0.93) kind = 'rock';
+              else kind = 'billboard';
+              sceneryItems.push({ z, lane, kind, seed: Math.floor(r3 * 1000) });
+            }
+          }
+        }
+        sceneryItems.sort((a, b) => b.z - a.z); // far → near
+        const billboardLabels = ['SHELL', 'GO!', 'GEAR', 'TURBO', 'V8', 'NITRO', 'PIT'];
+        const billboardColors = ['#dc2626', '#2563eb', '#facc15', '#16a34a', '#9333ea'];
+        for (const item of sceneryItems) {
+          const relZ = item.z - localDistance;
+          if (relZ < 0 || relZ > VIEW_FAR) continue;
+          const scale = 800 / (relZ + 800);
+          const sx = getX(item.lane, scale);
+          const sy = yAt(scale);
+          // Distance fog: fade out into the horizon.
+          const fog = Math.max(0.15, 1 - relZ / VIEW_FAR);
+          ctx.globalAlpha = fog;
+
+          if (item.kind === 'tree_pine') {
+            const sz = 90 * scale;
+            ctx.fillStyle = '#5b3a1a';
+            ctx.fillRect(sx - sz * 0.05, sy - sz * 0.3, sz * 0.1, sz * 0.3);
+            ctx.fillStyle = '#1f6f3b';
+            for (let t = 0; t < 3; t++) {
+              const yT = sy - sz * 0.3 - t * sz * 0.25;
+              const wT = sz * 0.5 - t * sz * 0.1;
+              ctx.beginPath();
+              ctx.moveTo(sx - wT, yT);
+              ctx.lineTo(sx + wT, yT);
+              ctx.lineTo(sx, yT - sz * 0.35);
+              ctx.closePath();
+              ctx.fill();
+            }
+          } else if (item.kind === 'tree_round') {
+            const sz = 80 * scale;
+            ctx.fillStyle = '#5b3a1a';
+            ctx.fillRect(sx - sz * 0.05, sy - sz * 0.3, sz * 0.1, sz * 0.3);
+            ctx.fillStyle = '#2d8a4a';
+            ctx.beginPath();
+            ctx.arc(sx, sy - sz * 0.55, sz * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#3aa55c';
+            ctx.beginPath();
+            ctx.arc(sx - sz * 0.15, sy - sz * 0.65, sz * 0.28, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (item.kind === 'rock') {
+            const sz = 50 * scale;
+            ctx.fillStyle = '#6b6b6b';
+            ctx.beginPath();
+            ctx.ellipse(sx, sy - sz * 0.2, sz * 0.5, sz * 0.35, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#8a8a8a';
+            ctx.beginPath();
+            ctx.ellipse(sx - sz * 0.1, sy - sz * 0.32, sz * 0.25, sz * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else { // billboard
+            const sz = 130 * scale;
+            ctx.fillStyle = '#3f3f46';
+            ctx.fillRect(sx - sz * 0.45, sy - sz * 0.3, sz * 0.05, sz * 0.3);
+            ctx.fillRect(sx + sz * 0.4, sy - sz * 0.3, sz * 0.05, sz * 0.3);
+            ctx.fillStyle = billboardColors[item.seed % billboardColors.length];
+            ctx.fillRect(sx - sz * 0.5, sy - sz * 0.7, sz, sz * 0.4);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = Math.max(1, scale * 2);
+            ctx.strokeRect(sx - sz * 0.5, sy - sz * 0.7, sz, sz * 0.4);
+            ctx.fillStyle = '#ffffff';
+            const fs = Math.max(6, sz * 0.13);
+            ctx.font = `900 ${fs}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(billboardLabels[item.seed % billboardLabels.length], sx, sy - sz * 0.5);
+            ctx.textAlign = 'start';
+            ctx.textBaseline = 'alphabetic';
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
 
       // Rumble Strips (Side of road) — bold red/white checker like the cover.
       // Each block fully spans 1 unit of z (no half-step) so blocks don't overlap or look striped.
@@ -3428,9 +3597,8 @@ export default function App() {
                                 // Heat estimate per gear: scales with current effective ratio (proxy for RPM at this stage).
                                 const ratioHeat = Math.min(1, Math.max(0, (gearRatio - 0.6) / 2.5));
                                 const glow = isConnected ? ratioHeat : 0;
-                                // Alternate spin direction along the chain so meshing looks correct.
-                                const idx = connectedGears.indexOf(gear.id);
-                                const reverse = idx >= 0 ? idx % 2 === 1 : (gear.x + gear.y) % 2 === 1;
+                                // Spin direction comes from the BFS-tree parity, so meshing gears truly oppose each other.
+                                const reverse = (gearParity.get(gear.id) ?? 0) === 1;
                                 return (
                                   <div className="relative flex items-center justify-center w-full h-full p-1">
                                     <GearIcon
@@ -3438,7 +3606,7 @@ export default function App() {
                                       material={(gear.material ?? 'steel') as GearMaterialKey}
                                       spinning={isConnected}
                                       spinReverse={reverse}
-                                      spinFast={glow > 0.5}
+                                      spinDuration={gear.teeth / 20}
                                       glow={glow}
                                       dim={!isConnected}
                                       className="w-full h-full"
@@ -3472,7 +3640,7 @@ export default function App() {
                                       ? gears.map(g => g.id === gear.id ? { ...g, teeth: previewTeeth } : g)
                                       : gears;
                                     const conn = computeConnectedGears(previewGears, GRID_COLS, GRID_ROWS);
-                                    const previewRatio = computeRatio(previewGears, conn);
+                                    const previewRatio = computeRatio(previewGears, conn.ids);
                                     const isPreview = previewTeeth != null && previewTeeth !== gear.teeth;
                                     return (
                                       <div className="mb-3 px-2 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between gap-2">
