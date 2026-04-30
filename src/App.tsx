@@ -1688,15 +1688,18 @@ export default function App() {
       ctx.fillRect(0, horizon - 4, w, 12);
 
       // Draw Road as N vertical strips. Lighter asphalt with subtle gradient near foreground.
+      // - Use FRACTIONAL shade (no Math.floor) to avoid visible color "bands".
+      // - Overlap each strip by ~1.5 px vertically to hide canvas anti-alias seams
+      //   that would otherwise show as thin horizontal lines across the road.
       const ROAD_STRIPS = 36;
       for (let i = 0; i < ROAD_STRIPS; i++) {
         const s1 = i / ROAD_STRIPS;
         const s2 = (i + 1) / ROAD_STRIPS;
         const y1 = yAt(s1);
-        const y2 = yAt(s2);
-        // Darker far away, slightly lighter near camera
-        const shade = 30 + Math.floor(s2 * 22);
-        ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade + 2})`;
+        const y2 = yAt(s2) + 1.5; // small overlap with the next strip below
+        // Darker far away, slightly lighter near camera (smooth gradient).
+        const shade = 30 + s2 * 22;
+        ctx.fillStyle = `rgb(${shade.toFixed(2)}, ${shade.toFixed(2)}, ${(shade + 2).toFixed(2)})`;
         ctx.beginPath();
         ctx.moveTo(getX(-1.8, s1), y1);
         ctx.lineTo(getX(1.8, s1), y1);
