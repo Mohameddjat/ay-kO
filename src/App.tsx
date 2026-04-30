@@ -1901,19 +1901,21 @@ export default function App() {
       }
       ctx.stroke();
 
-      // Lane Lines — drawn as bent dashed segments so they follow the hills.
-      ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : 'rgba(255,255,255,0.3)';
+      // Lane Lines — bent dashed segments that *flow* from horizon → camera
+      // for a real sense of forward motion. Same scroll rhythm as the rumble
+      // strips so curbs and dashes feel locked together.
+      ctx.strokeStyle = localBoostTimer > 0 ? '#fbbf24' : 'rgba(255,255,255,0.55)';
       ctx.lineWidth = 2;
       const LANE_SEGMENTS = 18;
-      const dashPeriod = 60;
-      const dashOff = (localDistance % dashPeriod) / dashPeriod;
+      const LANE_SCROLL_DIVISOR = 90; // matches the rumble-strip scroll rate
       for (let lane = -0.5; lane <= 0.5; lane += 1) {
-        for (let k = 0; k < LANE_SEGMENTS; k++) {
-          // Alternate dash on/off using k + dashOff for forward motion illusion
-          const phase = (k + dashOff) % 2;
-          if (phase >= 1) continue;
-          const s1 = k / LANE_SEGMENTS;
-          const s2 = Math.min(1, (k + 0.5) / LANE_SEGMENTS);
+        for (let i = 0; i < LANE_SEGMENTS; i++) {
+          // zPos slides smoothly toward the camera as localDistance grows.
+          const zPos = ((localDistance / LANE_SCROLL_DIVISOR) + i) % LANE_SEGMENTS;
+          // Each slot = dash + gap; first half of slot is the painted dash.
+          const s1 = 1 - (zPos / LANE_SEGMENTS);                 // closer end
+          const s2 = 1 - ((zPos + 0.5) / LANE_SEGMENTS);         // farther end
+          if (s1 <= 0.001 || s2 <= 0.001) continue;
           ctx.beginPath();
           ctx.moveTo(getX(lane, s1), yAt(s1));
           ctx.lineTo(getX(lane, s2), yAt(s2));
